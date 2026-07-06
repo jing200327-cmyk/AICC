@@ -1,0 +1,1716 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AICC 运营工作台 - 前端 Demo</title>
+  <style>
+    :root {
+      --bg: #f4f6f9;
+      --panel: #ffffff;
+      --panel-soft: #f8fafc;
+      --line: #d9e1ec;
+      --text: #1f2937;
+      --muted: #667085;
+      --side: #111827;
+      --side-2: #182233;
+      --brand: #1f6feb;
+      --brand-weak: #e8f1ff;
+      --ok: #16803c;
+      --ok-weak: #e9f7ee;
+      --warn: #b7791f;
+      --warn-weak: #fff6df;
+      --danger: #c03221;
+      --danger-weak: #fff0ee;
+      --radius: 8px;
+      --shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--text);
+      background: var(--bg);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", Arial, sans-serif;
+      letter-spacing: 0;
+    }
+
+    button, input, select, textarea {
+      font: inherit;
+    }
+
+    button {
+      cursor: pointer;
+    }
+
+    .login-page {
+      min-height: 100vh;
+      display: grid;
+      grid-template-columns: minmax(0, 1.1fr) 420px;
+      background:
+        linear-gradient(110deg, rgba(12, 23, 44, 0.94), rgba(23, 43, 77, 0.86)),
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1600' height='900' viewBox='0 0 1600 900'%3E%3Crect width='1600' height='900' fill='%23111b2d'/%3E%3Cg stroke='%23395b89' stroke-width='1' opacity='.4'%3E%3Cpath d='M0 160H1600M0 320H1600M0 480H1600M0 640H1600M0 800H1600M160 0V900M320 0V900M480 0V900M640 0V900M800 0V900M960 0V900M1120 0V900M1280 0V900M1440 0V900'/%3E%3C/g%3E%3Cg fill='%234a90e2' opacity='.16'%3E%3Crect x='180' y='190' width='240' height='140'/%3E%3Crect x='1040' y='250' width='320' height='220'/%3E%3Crect x='520' y='560' width='420' height='150'/%3E%3C/g%3E%3C/svg%3E");
+      background-size: cover;
+    }
+
+    .login-hero {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      padding: 64px 9vw;
+      color: #fff;
+    }
+
+    .login-hero h1 {
+      margin: 0;
+      font-size: 44px;
+      line-height: 1.16;
+      font-weight: 700;
+    }
+
+    .login-hero p {
+      width: min(620px, 100%);
+      margin: 20px 0 0;
+      color: rgba(255, 255, 255, 0.76);
+      font-size: 16px;
+      line-height: 1.8;
+    }
+
+    .login-metrics {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+      margin-top: 44px;
+      max-width: 720px;
+    }
+
+    .login-metric {
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      background: rgba(255, 255, 255, 0.08);
+      padding: 18px;
+      border-radius: var(--radius);
+    }
+
+    .login-metric strong {
+      display: block;
+      font-size: 26px;
+      margin-bottom: 6px;
+    }
+
+    .login-metric span {
+      color: rgba(255, 255, 255, 0.72);
+      font-size: 13px;
+    }
+
+    .login-panel-wrap {
+      display: flex;
+      align-items: center;
+      padding: 24px;
+      background: rgba(244, 246, 249, 0.92);
+    }
+
+    .login-panel {
+      width: 100%;
+      border-radius: var(--radius);
+      background: var(--panel);
+      box-shadow: var(--shadow);
+      padding: 32px;
+    }
+
+    .brand-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 28px;
+    }
+
+    .brand-mark {
+      width: 40px;
+      height: 40px;
+      border-radius: 6px;
+      display: grid;
+      place-items: center;
+      color: #fff;
+      background: #1f6feb;
+      font-weight: 700;
+    }
+
+    .brand-row h2 {
+      margin: 0;
+      font-size: 22px;
+    }
+
+    .brand-row small {
+      display: block;
+      color: var(--muted);
+      margin-top: 3px;
+    }
+
+    .field {
+      display: grid;
+      gap: 7px;
+      margin-bottom: 16px;
+    }
+
+    .field label {
+      font-size: 13px;
+      color: #344054;
+    }
+
+    .input, .select, .textarea {
+      width: 100%;
+      min-height: 38px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+      color: var(--text);
+      padding: 8px 11px;
+      outline: none;
+    }
+
+    .textarea {
+      min-height: 132px;
+      resize: vertical;
+      line-height: 1.55;
+      font-family: "Cascadia Mono", Consolas, "Microsoft YaHei", monospace;
+      font-size: 12px;
+    }
+
+    .input:focus, .select:focus, .textarea:focus {
+      border-color: var(--brand);
+      box-shadow: 0 0 0 3px rgba(31, 111, 235, 0.12);
+    }
+
+    .login-help {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      color: var(--muted);
+      font-size: 13px;
+      margin: 4px 0 20px;
+    }
+
+    .link {
+      color: var(--brand);
+      text-decoration: none;
+    }
+
+    .btn {
+      min-height: 36px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 8px 14px;
+      background: #fff;
+      color: #344054;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      white-space: nowrap;
+    }
+
+    .btn:hover {
+      border-color: #b8c5d6;
+      background: #f8fafc;
+    }
+
+    .btn.primary {
+      border-color: var(--brand);
+      background: var(--brand);
+      color: #fff;
+    }
+
+    .btn.primary:hover {
+      background: #1a5fc9;
+    }
+
+    .btn.success {
+      border-color: var(--ok);
+      background: var(--ok);
+      color: #fff;
+    }
+
+    .btn.warning {
+      border-color: var(--warn);
+      background: var(--warn);
+      color: #fff;
+    }
+
+    .btn.danger {
+      border-color: var(--danger);
+      background: var(--danger);
+      color: #fff;
+    }
+
+    .btn.icon {
+      width: 36px;
+      padding: 0;
+    }
+
+    .app {
+      display: none;
+      min-height: 100vh;
+    }
+
+    .sidebar {
+      width: 240px;
+      flex: 0 0 240px;
+      background: var(--side);
+      color: #cbd5e1;
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+    }
+
+    .side-head {
+      height: 64px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 0 18px;
+      border-bottom: 1px solid rgba(255,255,255,.08);
+    }
+
+    .side-head .brand-mark {
+      width: 34px;
+      height: 34px;
+      font-size: 14px;
+    }
+
+    .side-head strong {
+      color: #fff;
+      font-size: 15px;
+    }
+
+    .side-head span {
+      display: block;
+      color: #94a3b8;
+      font-size: 12px;
+      margin-top: 2px;
+    }
+
+    .menu {
+      padding: 14px 10px;
+      display: grid;
+      gap: 4px;
+    }
+
+    .menu button, .submenu button {
+      width: 100%;
+      border: 0;
+      background: transparent;
+      color: inherit;
+      min-height: 40px;
+      border-radius: 6px;
+      padding: 0 12px;
+      text-align: left;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .menu button.active, .menu button:hover, .submenu button:hover {
+      background: var(--side-2);
+      color: #fff;
+    }
+
+    .submenu {
+      margin: 2px 0 6px 34px;
+      border-left: 1px solid rgba(255,255,255,.12);
+      display: grid;
+      gap: 2px;
+    }
+
+    .submenu button {
+      min-height: 32px;
+      padding-left: 12px;
+      color: #aebbd0;
+      font-size: 13px;
+    }
+
+    .side-foot {
+      margin-top: auto;
+      padding: 14px 18px;
+      border-top: 1px solid rgba(255,255,255,.08);
+      color: #94a3b8;
+      font-size: 12px;
+      line-height: 1.6;
+    }
+
+    .main {
+      min-width: 0;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .topbar {
+      height: 64px;
+      background: #fff;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 22px;
+    }
+
+    .crumb {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .top-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .user-chip {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      padding: 5px 9px;
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      background: #fff;
+      color: #344054;
+      font-size: 13px;
+    }
+
+    .avatar {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      background: var(--brand-weak);
+      color: var(--brand);
+      font-weight: 700;
+      font-size: 12px;
+    }
+
+    .content {
+      padding: 22px;
+      overflow: auto;
+    }
+
+    .page {
+      display: none;
+    }
+
+    .page.active {
+      display: block;
+    }
+
+    .page-title {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 18px;
+      margin-bottom: 18px;
+    }
+
+    .page-title h1 {
+      margin: 0;
+      font-size: 24px;
+      line-height: 1.25;
+    }
+
+    .page-title p {
+      margin: 6px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .grid {
+      display: grid;
+      gap: 16px;
+    }
+
+    .grid.two {
+      grid-template-columns: minmax(360px, 0.95fr) minmax(460px, 1.05fr);
+    }
+
+    .grid.three {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      min-width: 0;
+    }
+
+    .panel-head {
+      min-height: 52px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .panel-head h2 {
+      margin: 0;
+      font-size: 16px;
+      font-weight: 650;
+    }
+
+    .panel-body {
+      padding: 16px;
+    }
+
+    .hint {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.6;
+    }
+
+    .upload-zone {
+      border: 1px dashed #9fb2cc;
+      border-radius: var(--radius);
+      background: #fbfdff;
+      padding: 20px;
+      display: grid;
+      gap: 12px;
+      text-align: center;
+    }
+
+    .upload-zone strong {
+      font-size: 15px;
+    }
+
+    .upload-zone input {
+      max-width: 100%;
+      margin: 0 auto;
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    .stat {
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 12px;
+      background: var(--panel-soft);
+      min-height: 74px;
+    }
+
+    .stat span {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      margin-bottom: 8px;
+    }
+
+    .stat strong {
+      font-size: 22px;
+    }
+
+    .status {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      min-height: 24px;
+      border-radius: 12px;
+      padding: 2px 9px;
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    .status.ok { background: var(--ok-weak); color: var(--ok); }
+    .status.warn { background: var(--warn-weak); color: var(--warn); }
+    .status.fail { background: var(--danger-weak); color: var(--danger); }
+    .status.info { background: var(--brand-weak); color: var(--brand); }
+    .status.gray { background: #eef2f7; color: #475467; }
+
+    .steps {
+      display: grid;
+      gap: 10px;
+      margin-top: 16px;
+    }
+
+    .step {
+      display: grid;
+      grid-template-columns: 26px minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: start;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 10px 12px;
+      background: #fff;
+    }
+
+    .step-index {
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      background: var(--brand-weak);
+      color: var(--brand);
+      font-weight: 700;
+      font-size: 12px;
+    }
+
+    .step strong {
+      display: block;
+      margin-bottom: 3px;
+    }
+
+    .step p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    .table-wrap {
+      overflow: auto;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 720px;
+    }
+
+    th, td {
+      border-bottom: 1px solid var(--line);
+      padding: 10px 12px;
+      text-align: left;
+      vertical-align: middle;
+      font-size: 13px;
+    }
+
+    th {
+      color: #475467;
+      background: #f8fafc;
+      font-weight: 650;
+    }
+
+    td {
+      color: #344054;
+    }
+
+    tr:hover td {
+      background: #fbfdff;
+    }
+
+    .preview-table {
+      min-width: 620px;
+    }
+
+    .reader {
+      min-height: 350px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+      color: #111827;
+      padding: 14px;
+      overflow: auto;
+      font-family: "Cascadia Mono", Consolas, monospace;
+      font-size: 12px;
+      line-height: 1.7;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+
+    .reader.muted {
+      background: #fbfdff;
+      color: #475467;
+    }
+    .status-reader {
+      min-height: 156px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+      color: #111827;
+      padding: 14px;
+      overflow: auto;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      line-height: 1.7;
+      font-size: 13px;
+    }
+
+    .log {
+      min-height: 180px;
+      max-height: 260px;
+      overflow: auto;
+      border-radius: 6px;
+      border: 1px solid var(--line);
+      background: #0b1220;
+      color: #cbd5e1;
+      padding: 12px;
+      font-family: "Cascadia Mono", Consolas, monospace;
+      font-size: 12px;
+      line-height: 1.7;
+    }
+
+    .tabs {
+      display: flex;
+      gap: 4px;
+      border-bottom: 1px solid var(--line);
+      margin-bottom: 16px;
+    }
+
+    .tab {
+      border: 0;
+      border-bottom: 2px solid transparent;
+      background: transparent;
+      min-height: 38px;
+      padding: 0 14px;
+      color: var(--muted);
+    }
+
+    .tab.active {
+      color: var(--brand);
+      border-bottom-color: var(--brand);
+    }
+
+    .tab-panel {
+      display: none;
+    }
+
+    .tab-panel.active {
+      display: block;
+    }
+
+    .right-stack {
+      display: grid;
+      gap: 16px;
+      align-content: start;
+    }
+
+    .split-summary {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+
+    .batch-row {
+      display: grid;
+      grid-template-columns: 120px minmax(0, 1fr) 110px;
+      gap: 12px;
+      align-items: center;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .bar {
+      height: 8px;
+      border-radius: 4px;
+      background: #e6ebf2;
+      overflow: hidden;
+    }
+
+    .bar span {
+      display: block;
+      height: 100%;
+      background: var(--brand);
+    }
+
+    .report-blocks {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .report-section {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: #fff;
+      overflow: hidden;
+    }
+
+    .report-section h3 {
+      margin: 0;
+      padding: 12px 14px;
+      font-size: 15px;
+      border-bottom: 1px solid var(--line);
+      background: var(--panel-soft);
+    }
+
+    .report-section dl {
+      margin: 0;
+      padding: 12px 14px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px 16px;
+    }
+
+    .report-section dt {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .report-section dd {
+      margin: 4px 0 0;
+      font-size: 18px;
+      font-weight: 650;
+    }
+
+    .config-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+    }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .notice {
+      border: 1px solid #b7cae7;
+      border-radius: 6px;
+      background: #f2f7ff;
+      padding: 10px 12px;
+      color: #24456f;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    .mobile-menu {
+      display: none;
+    }
+
+    @media (max-width: 1120px) {
+      .grid.two, .report-blocks, .config-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .grid.three {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 840px) {
+      .login-page {
+        grid-template-columns: 1fr;
+      }
+
+      .login-hero {
+        min-height: 44vh;
+        padding: 44px 24px;
+      }
+
+      .login-hero h1 {
+        font-size: 34px;
+      }
+
+      .login-metrics {
+        grid-template-columns: 1fr;
+      }
+
+      .login-panel-wrap {
+        padding: 18px;
+      }
+
+      .app {
+        display: none;
+        flex-direction: column;
+      }
+
+      .app.is-auth {
+        display: flex;
+      }
+
+      .sidebar {
+        width: 100%;
+        flex-basis: auto;
+        min-height: auto;
+      }
+
+      .menu {
+        display: none;
+      }
+
+      .mobile-menu {
+        display: block;
+        margin: 10px 18px 14px;
+        background: var(--side-2);
+        color: #fff;
+        border-color: rgba(255,255,255,.16);
+      }
+
+      .side-foot {
+        display: none;
+      }
+
+      .content {
+        padding: 16px;
+      }
+
+      .page-title {
+        display: grid;
+      }
+
+      .stats, .split-summary, .form-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <section class="login-page" id="loginPage">
+    <div class="login-hero">
+      <h1>AICC 运营工作台</h1>
+      <p>将线索导入、线索预分割&自动外呼、龙星行日报产出统一到一个运营入口，支持文件校验、人工确认、任务追踪、结果预览与日志回溯。</p>
+      <div class="login-metrics" aria-label="运营指标">
+        <div class="login-metric"><strong>3</strong><span>核心脚本能力接入</span></div>
+        <div class="login-metric"><strong>13</strong><span>门店与机器人配置项</span></div>
+        <div class="login-metric"><strong>100</strong><span>每小时最大导入线索</span></div>
+      </div>
+    </div>
+    <div class="login-panel-wrap">
+      <form class="login-panel" id="loginForm">
+        <div class="brand-row">
+          <div class="brand-mark">AI</div>
+          <div>
+            <h2>账号登录</h2>
+            <small>AICC 内部运营系统</small>
+          </div>
+        </div>
+        <div class="field">
+          <label for="username">用户名</label>
+          <input class="input" id="username" value="ops_admin" autocomplete="username">
+        </div>
+        <div class="field">
+          <label for="password">密码</label>
+          <input class="input" id="password" type="password" value="demo123456" autocomplete="current-password">
+        </div>
+        <div class="login-help">
+          <label><input type="checkbox" checked> 记住账号</label>
+          <a class="link" href="#">忘记密码</a>
+        </div>
+        <button class="btn primary" type="submit" style="width:100%;">登录工作台</button>
+      </form>
+    </div>
+  </section>
+
+  <section class="app" id="app">
+    <aside class="sidebar">
+      <div class="side-head">
+        <div class="brand-mark">AI</div>
+        <div>
+          <strong>AICC 运营工作台</strong>
+          <span>Internal Ops Console</span>
+        </div>
+      </div>
+      <select class="select mobile-menu" id="mobileMenu" aria-label="移动端菜单">
+        <option value="lead">线索导入</option>
+        <option value="split">线索预分割&自动外呼</option>
+        <option value="daily">龙星行日报</option>
+        <option value="tasks">任务记录</option>
+        <option value="config">配置中心</option>
+      </select>
+      <nav class="menu" aria-label="主菜单">
+        <button class="nav active" data-page="lead"><span>⬆</span>线索导入</button>
+        <button class="nav" data-page="split"><span>▦</span>线索预分割&自动外呼</button>
+        <div class="submenu" aria-label="线索预分割自动外呼门店">
+          <button data-store="合肥马自达">合肥马自达</button>
+          <button data-store="美诚林肯">美诚林肯</button>
+          <button data-store="天翔林肯">天翔林肯</button>
+          <button data-store="武汉骏马">武汉骏马</button>
+          <button data-store="银马">银马</button>
+        </div>
+        <button class="nav" data-page="daily"><span>▤</span>龙星行日报</button>
+        <button class="nav" data-page="tasks"><span>◷</span>任务记录</button>
+        <button class="nav" data-page="config"><span>⚙</span>配置中心</button>
+      </nav>
+      <div class="side-foot">
+        <div>环境：内网演示</div>
+        <div>存储：storage/uploads / outputs / logs</div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div>
+          <div class="crumb" id="crumb">运营工具 / 线索导入</div>
+        </div>
+        <div class="top-actions">
+          <button class="btn icon" title="刷新任务">↻</button>
+          <button class="btn icon" title="消息">□</button>
+          <div class="user-chip"><span class="avatar">运</span>运营专员</div>
+        </div>
+      </header>
+
+      <div class="content">
+        <section class="page active" id="page-lead">
+          <div class="page-title">
+            <div>
+              <h1>线索导入</h1>
+              <p>选择门店、上传 Excel、校验数据，并在人工确认后生成对应 TXT 文件。</p>
+            </div>
+            <div class="toolbar">
+              <span class="status info">ScriptRunner: lead_import</span>
+              <button class="btn">查看接口协议</button>
+            </div>
+          </div>
+
+          <div class="grid two">
+            <div class="panel">
+              <div class="panel-head">
+                <h2>上传与校验</h2>
+                <span class="status warn" id="leadStatus">待上传</span>
+              </div>
+              <div class="panel-body">
+                <div class="field">
+                  <label for="leadStore">你要上传的新线索是哪个门店的？</label>
+                  <select class="select" id="leadStore">
+                    <option>合肥海康达</option>
+                    <option selected>合肥马自达</option>
+                    <option>骏马众诚</option>
+                    <option>骏马众城-上月保养</option>
+                    <option>林肯美诚</option>
+                    <option>天翔林肯</option>
+                    <option>武汉银马</option>
+                    <option>襄阳林肯</option>
+                  </select>
+                </div>
+                <div class="upload-zone">
+                  <strong>上传 Excel 文件</strong>
+                  <span class="hint">支持 .xlsx / .xls / .csv；校验时按所选门店脚本处理，并保存到 建银线索 对应门店文件夹。</span>
+                  <input id="leadFile" type="file" accept=".xlsx,.xls,.csv">
+                  <div>
+                    <button class="btn primary" id="validateLead" type="button">校验数据</button>
+                  </div>
+                </div>
+                <div class="stats" aria-label="线索校验结果">
+                  <div class="stat"><span>总线索数</span><strong id="totalCount">0</strong></div>
+                  <div class="stat"><span>有效线索数</span><strong id="validCount">0</strong></div>
+                  <div class="stat"><span>异常线索数</span><strong id="errorCount">0</strong></div>
+                  <div class="stat"><span>重复线索数</span><strong id="repeatCount">0</strong></div>
+                </div>
+                <div class="steps">
+                  <div class="step">
+                    <div class="step-index">1</div>
+                    <div><strong>识别门店</strong><p id="detectedStore">待校验后返回识别结果</p></div>
+                    <span class="status gray">pending</span>
+                  </div>
+                  <div class="step">
+                    <div class="step-index">2</div>
+                    <div><strong>人工确认</strong><p>确认门店与校验结果后调用对应门店脚本生成 TXT。</p></div>
+                    <button class="btn success" id="runLead" type="button">确认生成 TXT</button>
+                  </div>
+                  <div class="step">
+                    <div class="step-index">3</div>
+                    <div><strong>归档输出</strong><p>输出文件保存至建银线索对应门店文件夹，并同步登记任务输出。</p></div>
+                    <span class="status gray" id="leadOutputState">未生成</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="panel">
+              <div class="panel-head">
+                <h2>TXT 文件阅读器</h2>
+                <div class="toolbar">
+                  <button class="btn" id="downloadTxt" type="button">下载 TXT</button>
+                  <button class="btn" id="copyTxt" type="button">复制内容</button>
+                </div>
+              </div>
+              <div class="panel-body">
+                <div class="reader" id="txtReader">等待生成 TXT 文件。生成后将在此展示 JSON Lines 内容，运营人员可在浏览器内人工校验。</div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="page" id="page-split">
+          <div class="page-title">
+            <div>
+              <h1>线索预分割&自动外呼</h1>
+              <p>按门店上传外呼模板，默认前 5 条测试，后续每 45 条一组，每小时最大导入 100 条。</p>
+            </div>
+            <div class="toolbar">
+              <span class="status info" id="splitStoreTag">当前门店：合肥马自达</span>
+              <button class="btn">同步机器人配置</button>
+            </div>
+          </div>
+
+          <div class="grid two">
+            <div class="panel">
+              <div class="panel-head">
+                <h2>上传外呼线索</h2>
+                <span class="status warn" id="splitStatus">待预览</span>
+              </div>
+              <div class="panel-body">
+                <div class="field">
+                  <label for="splitStore">门店</label>
+                  <select class="select" id="splitStore">
+                    <option selected>合肥马自达</option>
+                    <option>美诚林肯</option>
+                    <option>天翔林肯</option>
+                    <option>武汉骏马</option>
+                    <option>银马</option>
+                  </select>
+                </div>
+                <div class="upload-zone">
+                  <strong>请上传今日要外呼的线索模板</strong>
+                  <span class="hint">系统会先做列名、手机号、重复导入与批次容量检查。</span>
+                  <input id="splitFile" type="file" accept=".xlsx,.xls,.csv">
+                  <div class="toolbar" style="justify-content:center;">
+                    <button class="btn primary" id="previewSplit" type="button">预览分割结果</button>
+                    <button class="btn" type="button">保存规则草稿</button>
+                  </div>
+                </div>
+                <div class="split-summary">
+                  <div class="stat"><span>测试线索</span><strong>5</strong></div>
+                  <div class="stat"><span>正式批次</span><strong id="batchCount">0</strong></div>
+                  <div class="stat"><span>单批数量</span><strong>45</strong></div>
+                  <div class="stat"><span>小时上限</span><strong>100</strong></div>
+                </div>
+                <div class="notice">关键操作前必须人工确认。测试批次推出后，正式批次按钮才会进入可操作状态。</div>
+                <div class="toolbar" style="margin-top:14px;">
+                  <button class="btn warning" id="pushTest" type="button">推出测试线索</button>
+                  <button class="btn success" id="pushFormal" type="button">推出正式线索</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="right-stack">
+              <div class="panel">
+                <div class="panel-head">
+                  <h2>分割预览</h2>
+                  <span class="status gray" id="formalState">正式批次未推出</span>
+                </div>
+                <div class="panel-body">
+                  <div class="field">
+                    <label for="splitBatchSelect">选择要核对的批次</label>
+                    <select class="select" id="splitBatchSelect" disabled>
+                      <option>请先预览分割结果</option>
+                    </select>
+                  </div>
+                  <div class="reader muted" id="splitReader">等待预览分割结果。预览完成后，可通过上方下拉选择测试批次或正式批次，查看该批次前 5 条数据用于人工核对。</div>
+                </div>
+              </div>
+
+              <div class="panel">
+                <div class="panel-head">
+                  <h2>当前外呼状态</h2>
+                  <div class="toolbar">
+                    <span class="status gray" id="callStatusState">未更新</span>
+                    <button class="btn primary" id="refreshCallStatus" type="button">更新当前外呼状态</button>
+                  </div>
+                </div>
+                <div class="panel-body">
+                  <div class="status-reader" id="callStatusReader">当前门店尚未更新外呼状态。点击“更新当前外呼状态”后，将展示测试批次和正式批次的已外呼、接通量、接通率等信息。</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+        <section class="page" id="page-daily">
+          <div class="page-title">
+            <div>
+              <h1>龙星行日报</h1>
+              <p>执行报表工具 main.py，采集原始数据、生成每日文本报告和日度月度汇总表。</p>
+            </div>
+            <div class="toolbar">
+              <button class="btn primary" id="generateDaily" type="button">生成今日龙星行日报</button>
+            </div>
+          </div>
+
+          <div class="grid two">
+            <div class="panel">
+              <div class="panel-head">
+                <h2>日报任务</h2>
+                <span class="status info" id="dailyStatus">可执行</span>
+              </div>
+              <div class="panel-body">
+                <div class="steps">
+                  <div class="step">
+                    <div class="step-index">1</div>
+                    <div><strong>爬取数据</strong><p>写入 data/YYMMDD/原始数据，失败记录进入错误日志目录。</p></div>
+                    <span class="status gray" id="dailyStep1">pending</span>
+                  </div>
+                  <div class="step">
+                    <div class="step-index">2</div>
+                    <div><strong>处理报表</strong><p>调用 process_clue_report.py，生成中间文件、每日文本报告。</p></div>
+                    <span class="status gray" id="dailyStep2">pending</span>
+                  </div>
+                  <div class="step">
+                    <div class="step-index">3</div>
+                    <div><strong>汇总输出</strong><p>生成日度月度汇总表，支持分门店预览和下载。</p></div>
+                    <span class="status gray" id="dailyStep3">pending</span>
+                  </div>
+                </div>
+                <div style="margin-top:16px;">
+                  <div class="log" id="dailyLog">[待执行] ScriptRunner 将以 cwd=龙星行报表工具_核心文件_260629 执行 python main.py</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="panel">
+              <div class="panel-head">
+                <h2>日报分区预览</h2>
+                <button class="btn">下载汇总表</button>
+              </div>
+              <div class="panel-body">
+                <div class="report-blocks" id="reportBlocks">
+                  <div class="report-section">
+                    <h3>长沙</h3>
+                    <dl><div><dt>新增线索</dt><dd>--</dd></div><div><dt>接通率</dt><dd>--</dd></div><div><dt>有效线索</dt><dd>--</dd></div><div><dt>TOP 未接通</dt><dd>--</dd></div></dl>
+                  </div>
+                  <div class="report-section">
+                    <h3>骏宜</h3>
+                    <dl><div><dt>新增线索</dt><dd>--</dd></div><div><dt>接通率</dt><dd>--</dd></div><div><dt>有效线索</dt><dd>--</dd></div><div><dt>TOP 未接通</dt><dd>--</dd></div></dl>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="page" id="page-tasks">
+          <div class="page-title">
+            <div>
+              <h1>任务记录</h1>
+              <p>统一展示 task_runs 表中的任务类型、状态、输入输出文件、日志与错误信息。</p>
+            </div>
+            <div class="toolbar">
+              <select class="select" style="width:150px;"><option>全部状态</option><option>执行中</option><option>完成</option><option>失败</option></select>
+              <button class="btn">导出记录</button>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-head">
+              <h2>最近任务</h2>
+              <span class="status info">轮询间隔 3s</span>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>任务类型</th><th>任务名称</th><th>执行人</th><th>状态</th><th>输入文件</th><th>输出文件</th><th>创建时间</th><th>完成时间</th><th>操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>线索导入</td><td>合肥马自达 260706 导入</td><td>运营专员</td><td><span class="status ok">完成</span></td><td>合肥马自达-线索.xlsx</td><td>job_260706.txt</td><td>09:12:18</td><td>09:12:25</td><td><button class="btn">详情</button></td>
+                  </tr>
+                  <tr>
+                    <td>预外呼</td><td>银马 测试批次</td><td>运营专员</td><td><span class="status info">执行中</span></td><td>银马-模板.xlsx</td><td>银马-测试.xlsx</td><td>10:03:41</td><td>--</td><td><button class="btn">日志</button></td>
+                  </tr>
+                  <tr>
+                    <td>龙星行日报</td><td>260706 日报生成</td><td>系统</td><td><span class="status fail">失败</span></td><td>main.py</td><td>--</td><td>08:00:00</td><td>08:02:44</td><td><button class="btn">错误</button></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <section class="page" id="page-config">
+          <div class="page-title">
+            <div>
+              <h1>配置中心</h1>
+              <p>维护门店、机器人、脚本路径与分割规则，后续由后端 API 持久化到 SQLite。</p>
+            </div>
+            <div class="toolbar"><button class="btn primary">保存配置</button></div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-body">
+              <div class="tabs" role="tablist">
+                <button class="tab active" data-tab="store">门店配置</button>
+                <button class="tab" data-tab="robot">机器人配置</button>
+                <button class="tab" data-tab="script">脚本配置</button>
+                <button class="tab" data-tab="rule">分割规则</button>
+              </div>
+
+              <div class="tab-panel active" id="tab-store">
+                <div class="config-grid">
+                  <div class="field"><label>门店名称</label><input class="input" value="合肥马自达"></div>
+                  <div class="field"><label>城市</label><input class="input" value="合肥"></div>
+                  <div class="field"><label>品牌</label><input class="input" value="马自达"></div>
+                  <div class="field"><label>输出目录</label><input class="input" value="storage/outputs/lead-import/hefei_mazda"></div>
+                  <div class="field"><label>状态</label><select class="select"><option>启用</option><option>停用</option></select></div>
+                </div>
+              </div>
+
+              <div class="tab-panel" id="tab-robot">
+                <div class="config-grid">
+                  <div class="field"><label>机器人名称</label><input class="input" value="合肥马自达保养招揽"></div>
+                  <div class="field"><label>所属门店</label><input class="input" value="合肥马自达"></div>
+                  <div class="field"><label>外呼场景</label><input class="input" value="售后保养提醒"></div>
+                  <div class="field"><label>是否默认</label><select class="select"><option>是</option><option>否</option></select></div>
+                  <div class="field"><label>状态</label><select class="select"><option>启用</option><option>停用</option></select></div>
+                </div>
+              </div>
+
+              <div class="tab-panel" id="tab-script">
+                <div class="config-grid">
+                  <div class="field"><label>功能类型</label><select class="select"><option>线索导入</option><option>线索预分割&自动外呼</option><option>日报生成</option></select></div>
+                  <div class="field"><label>门店</label><input class="input" value="合肥马自达"></div>
+                  <div class="field"><label>脚本路径</label><input class="input" value="线索变量脚本/线索变量脚本/合肥马自达.py"></div>
+                  <div class="field"><label>输出类型</label><select class="select"><option>txt</option><option>xlsx</option><option>report</option></select></div>
+                  <div class="field"><label>状态</label><select class="select"><option>启用</option><option>停用</option></select></div>
+                </div>
+              </div>
+
+              <div class="tab-panel" id="tab-rule">
+                <div class="config-grid">
+                  <div class="field"><label>测试线索数量</label><input class="input" type="number" value="5"></div>
+                  <div class="field"><label>每批线索数量</label><input class="input" type="number" value="45"></div>
+                  <div class="field"><label>每小时最大导入量</label><input class="input" type="number" value="100"></div>
+                  <div class="field"><label>规则状态</label><select class="select"><option>启用</option><option>停用</option></select></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </main>
+  </section>
+
+  <script>
+    const loginPage = document.getElementById('loginPage');
+    const app = document.getElementById('app');
+    const pages = {
+      lead: '线索导入',
+      split: '线索预分割&自动外呼',
+      daily: '龙星行日报',
+      tasks: '任务记录',
+      config: '配置中心'
+    };
+
+    document.getElementById('loginForm').addEventListener('submit', (event) => {
+      event.preventDefault();
+      loginPage.style.display = 'none';
+      app.classList.add('is-auth');
+      app.style.display = 'flex';
+    });
+
+    function showPage(page) {
+      document.querySelectorAll('.page').forEach(item => item.classList.remove('active'));
+      document.getElementById(`page-${page}`).classList.add('active');
+      document.querySelectorAll('.nav').forEach(item => item.classList.toggle('active', item.dataset.page === page));
+      document.getElementById('crumb').textContent = `运营工具 / ${pages[page]}`;
+      document.getElementById('mobileMenu').value = page;
+    }
+
+    document.querySelectorAll('.nav').forEach(btn => {
+      btn.addEventListener('click', () => showPage(btn.dataset.page));
+    });
+
+    document.getElementById('mobileMenu').addEventListener('change', (event) => showPage(event.target.value));
+
+    const splitStoreNames = ['合肥马自达', '美诚林肯', '天翔林肯', '武汉骏马', '银马'];
+    let currentSplitStore = document.getElementById('splitStore').value;
+    const splitBatchOptionsHtml = [
+      '<option value="test">测试批次 - 5 条</option>',
+      '<option value="formal2">正式批次 2 - 45 条</option>',
+      '<option value="formal3">正式批次 3 - 45 条</option>',
+      '<option value="formal4">正式批次 4 - 45 条</option>',
+      '<option value="formal5">正式批次 5 - 31 条</option>'
+    ].join('');
+    const defaultSplitReaderText = '等待预览分割结果。预览完成后，可通过上方下拉选择测试批次或正式批次，查看该批次前 5 条数据用于人工核对。';
+    const defaultCallStatusText = '当前门店尚未更新外呼状态。点击“更新当前外呼状态”后，将展示测试批次和正式批次的已外呼、接通量、接通率等信息。';
+
+    function createSplitStoreState() {
+      return {
+        splitStatusClass: 'status warn',
+        splitStatusText: '待预览',
+        batchCount: '0',
+        formalStateClass: 'status gray',
+        formalStateText: '正式批次未推出',
+        batchOptionsHtml: '<option>请先预览分割结果</option>',
+        batchDisabled: true,
+        selectedBatch: '',
+        splitReaderText: defaultSplitReaderText,
+        splitReaderMuted: true,
+        callStatusClass: 'status gray',
+        callStatusText: '未更新',
+        callStatusReaderText: defaultCallStatusText,
+      };
+    }
+
+    const splitStoreStates = Object.fromEntries(splitStoreNames.map(store => [store, createSplitStoreState()]));
+
+    function saveCurrentSplitState() {
+      const batchSelect = document.getElementById('splitBatchSelect');
+      const splitReader = document.getElementById('splitReader');
+      splitStoreStates[currentSplitStore] = {
+        splitStatusClass: document.getElementById('splitStatus').className,
+        splitStatusText: document.getElementById('splitStatus').textContent,
+        batchCount: document.getElementById('batchCount').textContent,
+        formalStateClass: document.getElementById('formalState').className,
+        formalStateText: document.getElementById('formalState').textContent,
+        batchOptionsHtml: batchSelect.innerHTML,
+        batchDisabled: batchSelect.disabled,
+        selectedBatch: batchSelect.value,
+        splitReaderText: splitReader.textContent,
+        splitReaderMuted: splitReader.classList.contains('muted'),
+        callStatusClass: document.getElementById('callStatusState').className,
+        callStatusText: document.getElementById('callStatusState').textContent,
+        callStatusReaderText: document.getElementById('callStatusReader').textContent,
+      };
+    }
+
+    function renderSplitState(store) {
+      const state = splitStoreStates[store] || createSplitStoreState();
+      currentSplitStore = store;
+      document.getElementById('splitStore').value = store;
+      document.getElementById('splitStoreTag').textContent = `当前门店：${store}`;
+      document.getElementById('splitStatus').className = state.splitStatusClass;
+      document.getElementById('splitStatus').textContent = state.splitStatusText;
+      document.getElementById('batchCount').textContent = state.batchCount;
+      document.getElementById('formalState').className = state.formalStateClass;
+      document.getElementById('formalState').textContent = state.formalStateText;
+      const batchSelect = document.getElementById('splitBatchSelect');
+      batchSelect.innerHTML = state.batchOptionsHtml;
+      batchSelect.disabled = state.batchDisabled;
+      batchSelect.value = state.selectedBatch;
+      const splitReader = document.getElementById('splitReader');
+      splitReader.textContent = state.splitReaderText;
+      splitReader.classList.toggle('muted', state.splitReaderMuted);
+      document.getElementById('callStatusState').className = state.callStatusClass;
+      document.getElementById('callStatusState').textContent = state.callStatusText;
+      document.getElementById('callStatusReader').textContent = state.callStatusReaderText;
+    }
+
+    function switchSplitStore(store) {
+      saveCurrentSplitState();
+      renderSplitState(store);
+    }
+
+    const callStatusSamples = {
+      '银马': ['银马-测试 已外呼5条，接通3条，接通率60%', '银马-2 已外呼45条，接通31条，接通率68.9%', '银马-3 已外呼45条，接通29条，接通率64.4%', '银马-4 已外呼45条，接通30条，接通率66.7%', '银马-5 已外呼31条，接通19条，接通率61.3%'],
+      '合肥马自达': ['合肥马自达-测试 已外呼5条，接通4条，接通率80%', '合肥马自达-2 已外呼45条，接通33条，接通率73.3%', '合肥马自达-3 已外呼45条，接通32条，接通率71.1%', '合肥马自达-4 已外呼45条，接通28条，接通率62.2%', '合肥马自达-5 已外呼31条，接通20条，接通率64.5%'],
+      '美诚林肯': ['美诚林肯-测试 已外呼5条，接通3条，接通率60%', '美诚林肯-2 已外呼45条，接通27条，接通率60%', '美诚林肯-3 已外呼45条，接通30条，接通率66.7%', '美诚林肯-4 已外呼45条，接通26条，接通率57.8%', '美诚林肯-5 已外呼31条，接通18条，接通率58.1%'],
+      '天翔林肯': ['天翔林肯-测试 已外呼5条，接通4条，接通率80%', '天翔林肯-2 已外呼45条，接通34条，接通率75.6%', '天翔林肯-3 已外呼45条，接通31条，接通率68.9%', '天翔林肯-4 已外呼45条，接通29条，接通率64.4%', '天翔林肯-5 已外呼31条，接通22条，接通率71%'],
+      '武汉骏马': ['武汉骏马-测试 已外呼5条，接通3条，接通率60%', '武汉骏马-2 已外呼45条，接通30条，接通率66.7%', '武汉骏马-3 已外呼45条，接通28条，接通率62.2%', '武汉骏马-4 已外呼45条，接通29条，接通率64.4%', '武汉骏马-5 已外呼31条，接通17条，接通率54.8%'],
+    };
+
+    function refreshCurrentCallStatus() {
+      const lines = callStatusSamples[currentSplitStore] || [`${currentSplitStore}-测试 已外呼5条，接通3条，接通率60%`];
+      document.getElementById('callStatusState').className = 'status ok';
+      document.getElementById('callStatusState').textContent = '已更新';
+      document.getElementById('callStatusReader').textContent = lines.join('\n');
+      saveCurrentSplitState();
+    }
+
+    document.querySelectorAll('.submenu button').forEach(btn => {
+      btn.addEventListener('click', () => {
+        switchSplitStore(btn.dataset.store);
+        showPage('split');
+      });
+    });
+
+    document.getElementById('splitStore').addEventListener('change', (event) => {
+      switchSplitStore(event.target.value);
+    });
+
+    const leadApiBaseUrl = 'http://127.0.0.1:18765/api/leads/import';
+    const leadStoreCodeMap = {
+      '合肥海康达': 'hefei_haikangda',
+      '合肥马自达': 'hefei_mazda',
+      '骏马众诚': 'junma_zhongcheng',
+      '骏马众城-上月保养': 'junma_last_month',
+      '林肯美诚': 'lincoln_meicheng',
+      '天翔林肯': 'tianxiang_lincoln',
+      '武汉银马': 'wuhan_yinma',
+      '襄阳林肯': 'xiangyang_lincoln',
+    };
+    let leadImportJobDetail = null;
+
+    function setLeadStatus(className, text) {
+      document.getElementById('leadStatus').className = className;
+      document.getElementById('leadStatus').textContent = text;
+    }
+
+    function setLeadOutputState(className, text) {
+      document.getElementById('leadOutputState').className = className;
+      document.getElementById('leadOutputState').textContent = text;
+    }
+
+    function resetLeadResult() {
+      leadImportJobDetail = null;
+      document.getElementById('totalCount').textContent = '0';
+      document.getElementById('validCount').textContent = '0';
+      document.getElementById('errorCount').textContent = '0';
+      document.getElementById('repeatCount').textContent = '0';
+      document.getElementById('detectedStore').textContent = '待校验后返回识别结果';
+      setLeadOutputState('status gray', '未生成');
+      document.getElementById('txtReader').textContent = '等待生成 TXT 文件。生成后将在此展示 JSON Lines 内容，运营人员可在浏览器内人工校验。';
+    }
+
+    async function parseApiResponse(response) {
+      const contentType = response.headers.get('content-type') || '';
+      if (contentType.includes('application/json')) return response.json();
+      return { error: { code: `HTTP_${response.status}`, message: await response.text() } };
+    }
+
+    function formatLeadError(error) {
+      const code = error?.code || 'REQUEST_FAILED';
+      const message = error?.message || '请求失败，请检查后端服务是否已启动';
+      const detail = error?.detail ? `：${error.detail}` : '';
+      return `${code} - ${message}${detail}`;
+    }
+
+    function applyLeadSummary(detail) {
+      const summary = detail.summary || {};
+      document.getElementById('totalCount').textContent = summary.total_count ?? 0;
+      document.getElementById('validCount').textContent = summary.valid_count ?? 0;
+      document.getElementById('errorCount').textContent = summary.error_count ?? 0;
+      document.getElementById('repeatCount').textContent = summary.repeat_count ?? 0;
+    }
+
+    function applyLeadDetail(detail, selectedStore) {
+      leadImportJobDetail = detail;
+      applyLeadSummary(detail);
+      const detected = detail.detected_store;
+      const inputPath = detail.input_file?.saved_path || '未返回保存路径';
+      const scriptPath = (detail.logs || []).find(line => line.includes('.py')) || '脚本由门店注册表匹配';
+      if (detail.status === 'completed') {
+        setLeadStatus('status ok', '校验通过');
+        setLeadOutputState('status warn', 'TXT 已生成，待人工确认读取');
+      } else if (detail.status === 'failed') {
+        setLeadStatus('status danger', '处理失败');
+        setLeadOutputState('status gray', '未生成');
+      } else {
+        setLeadStatus('status warn', detail.status);
+      }
+      document.getElementById('detectedStore').textContent = `选择门店：${selectedStore}；执行门店：${detected?.store_name || selectedStore}；匹配方式：${(detected?.matched_by || []).join(' / ') || 'force_store_code'}；输入文件：${inputPath}；${scriptPath}`;
+    }
+
+    document.getElementById('leadStore').addEventListener('change', () => {
+      setLeadStatus('status warn', '待上传');
+      resetLeadResult();
+    });
+
+    document.getElementById('leadFile').addEventListener('change', () => {
+      setLeadStatus('status warn', '待校验');
+      resetLeadResult();
+    });
+
+    document.getElementById('validateLead').addEventListener('click', async () => {
+      const store = document.getElementById('leadStore').value;
+      const storeCode = leadStoreCodeMap[store];
+      const file = document.getElementById('leadFile').files[0];
+      if (!storeCode) {
+        setLeadStatus('status danger', '门店未配置');
+        document.getElementById('detectedStore').textContent = `未找到【${store}】对应脚本配置。`;
+        return;
+      }
+      if (!file) {
+        setLeadStatus('status danger', '未选择文件');
+        document.getElementById('detectedStore').textContent = '请先选择要导入的 Excel 文件。';
+        return;
+      }
+      if (!/\.(xlsx|xls|csv)$/i.test(file.name)) {
+        setLeadStatus('status danger', '文件格式不支持');
+        document.getElementById('detectedStore').textContent = '仅支持 .xlsx / .xls / .csv 文件。';
+        return;
+      }
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('force_store_code', storeCode);
+      formData.append('remark', `AICC 前端线索导入：${store}`);
+      setLeadStatus('status info', '上传处理中');
+      setLeadOutputState('status gray', '未读取');
+      document.getElementById('detectedStore').textContent = `正在按【${store}】脚本处理 ${file.name}...`;
+      document.getElementById('txtReader').textContent = '文件已提交处理。校验完成后点击“确认生成 TXT”读取右侧内容。';
+      try {
+        const createResponse = await fetch(leadApiBaseUrl, { method: 'POST', body: formData });
+        const createBody = await parseApiResponse(createResponse);
+        if (!createResponse.ok) throw createBody.error || createBody;
+        const detailResponse = await fetch(`${leadApiBaseUrl}/jobs/${createBody.job_id}`);
+        const detailBody = await parseApiResponse(detailResponse);
+        if (!detailResponse.ok) throw detailBody.error || detailBody;
+        applyLeadDetail(detailBody, store);
+      } catch (error) {
+        leadImportJobDetail = null;
+        setLeadStatus('status danger', '校验失败');
+        setLeadOutputState('status gray', '未生成');
+        document.getElementById('detectedStore').textContent = formatLeadError(error);
+      }
+    });
+
+    document.getElementById('runLead').addEventListener('click', async () => {
+      const store = document.getElementById('leadStore').value;
+      if (!leadImportJobDetail) {
+        setLeadOutputState('status warn', '请先校验');
+        document.getElementById('txtReader').textContent = '请先选择门店和 Excel 文件，并点击“校验数据”。';
+        return;
+      }
+      if (leadImportJobDetail.status !== 'completed') {
+        setLeadOutputState('status danger', '不可读取');
+        document.getElementById('txtReader').textContent = formatLeadError(leadImportJobDetail.error || { code: leadImportJobDetail.status, message: '当前任务未完成' });
+        return;
+      }
+      if (!confirm(`确认读取【${store}】已生成的 TXT 文件到右侧阅读器？`)) return;
+      const txt = leadImportJobDetail.output?.txt_preview || '';
+      document.getElementById('txtReader').textContent = txt || 'TXT 文件为空。';
+      setLeadOutputState('status ok', '已读取');
+    });
+
+    document.getElementById('downloadTxt').addEventListener('click', () => {
+      if (!leadImportJobDetail?.job_id || leadImportJobDetail.status !== 'completed') {
+        setLeadOutputState('status warn', '请先生成');
+        return;
+      }
+      window.open(`${leadApiBaseUrl}/jobs/${leadImportJobDetail.job_id}/download`, '_blank');
+    });
+
+    document.getElementById('copyTxt').addEventListener('click', async () => {
+      const text = document.getElementById('txtReader').textContent || '';
+      if (!text || text.startsWith('等待生成')) return;
+      try {
+        await navigator.clipboard.writeText(text);
+      } catch (_) {
+        setLeadOutputState('status warn', '复制失败');
+      }
+    });
+
+    document.getElementById('previewSplit').addEventListener('click', () => {
+      document.getElementById('splitStatus').className = 'status ok';
+      document.getElementById('splitStatus').textContent = '预览完成';
+      document.getElementById('batchCount').textContent = '4';
+      const batchSelect = document.getElementById('splitBatchSelect');
+      batchSelect.disabled = false;
+      batchSelect.innerHTML = splitBatchOptionsHtml;
+      batchSelect.value = 'test';
+      updateSplitReader('test');
+      saveCurrentSplitState();
+    });
+
+    const splitBatchSamples = {
+      test: [
+        ['测试批次', '1', '王女士', '138****6123', 'CX-5', '保养提醒', '变量: 上次保养 2026-01-06 / 里程 32880'],
+        ['测试批次', '2', '李先生', '139****2481', '昂克赛拉', '保养提醒', '变量: 上次保养 2026-01-08 / 里程 18620'],
+        ['测试批次', '3', '陈女士', '186****9035', 'CX-30', '保养提醒', '变量: 上次保养 2026-01-11 / 里程 45210'],
+        ['测试批次', '4', '赵先生', '177****0186', '阿特兹', '流失召回', '变量: 上次进厂 2025-12-28 / 里程 59730'],
+        ['测试批次', '5', '周女士', '158****7742', 'CX-50', '质保到期', '变量: 销售日期 2023-07-12 / 到期提醒']
+      ],
+      formal2: [
+        ['正式批次 2', '1', '刘先生', '136****4319', 'CX-5', '保养提醒', '变量: 上次保养 2026-01-13 / 里程 21900'],
+        ['正式批次 2', '2', '孙女士', '151****7820', '昂克赛拉', '保养提醒', '变量: 上次保养 2026-01-14 / 里程 30420'],
+        ['正式批次 2', '3', '吴先生', '189****5276', 'CX-30', '流失召回', '变量: 上次进厂 2025-12-20 / 里程 49320'],
+        ['正式批次 2', '4', '郑女士', '137****9051', 'CX-50', '保养提醒', '变量: 上次保养 2026-01-15 / 里程 27110'],
+        ['正式批次 2', '5', '冯先生', '135****6608', '阿特兹', '质保到期', '变量: 销售日期 2023-07-18 / 到期提醒']
+      ],
+      formal3: [
+        ['正式批次 3', '1', '曹女士', '159****3142', 'CX-5', '保养提醒', '变量: 上次保养 2026-01-16 / 里程 31870'],
+        ['正式批次 3', '2', '何先生', '188****7926', '昂克赛拉', '保养提醒', '变量: 上次保养 2026-01-17 / 里程 24600'],
+        ['正式批次 3', '3', '马女士', '132****4571', 'CX-30', '流失召回', '变量: 上次进厂 2025-12-24 / 里程 50120'],
+        ['正式批次 3', '4', '罗先生', '155****8302', 'CX-50', '保养提醒', '变量: 上次保养 2026-01-18 / 里程 28760'],
+        ['正式批次 3', '5', '梁女士', '187****2249', '阿特兹', '质保到期', '变量: 销售日期 2023-07-21 / 到期提醒']
+      ],
+      formal4: [
+        ['正式批次 4', '1', '宋先生', '139****6501', 'CX-5', '保养提醒', '变量: 上次保养 2026-01-19 / 里程 33520'],
+        ['正式批次 4', '2', '唐女士', '181****7438', '昂克赛拉', '保养提醒', '变量: 上次保养 2026-01-20 / 里程 29510'],
+        ['正式批次 4', '3', '许先生', '150****9017', 'CX-30', '流失召回', '变量: 上次进厂 2025-12-27 / 里程 52100'],
+        ['正式批次 4', '4', '邓女士', '178****4863', 'CX-50', '保养提醒', '变量: 上次保养 2026-01-21 / 里程 26800'],
+        ['正式批次 4', '5', '程先生', '133****1156', '阿特兹', '质保到期', '变量: 销售日期 2023-07-24 / 到期提醒']
+      ],
+      formal5: [
+        ['正式批次 5', '1', '袁女士', '152****5088', 'CX-5', '保养提醒', '变量: 上次保养 2026-01-22 / 里程 30980'],
+        ['正式批次 5', '2', '潘先生', '185****3410', '昂克赛拉', '保养提醒', '变量: 上次保养 2026-01-23 / 里程 22640'],
+        ['正式批次 5', '3', '薛女士', '157****7694', 'CX-30', '流失召回', '变量: 上次进厂 2025-12-30 / 里程 47860'],
+        ['正式批次 5', '4', '丁先生', '134****0825', 'CX-50', '保养提醒', '变量: 上次保养 2026-01-24 / 里程 25300'],
+        ['正式批次 5', '5', '姜女士', '182****9903', '阿特兹', '质保到期', '变量: 销售日期 2023-07-27 / 到期提醒']
+      ]
+    };
+
+    function updateSplitReader(batchKey) {
+      const rows = splitBatchSamples[batchKey] || [];
+      const batchSelect = document.getElementById('splitBatchSelect');
+      const batchLabel = batchSelect.selectedOptions[0]?.textContent || '测试批次 - 5 条';
+      const fileName = `${document.getElementById('splitStore').value}-${batchLabel.split(' - ')[0]}.xlsx`;
+      const header = ['行号', '客户姓氏', '被叫号码', '意向车型', '来源平台', '变量'];
+      const divider = '---- | -------- | ----------- | -------- | -------- | ----------------------------------------';
+      const body = rows.map(row => [row[1], row[2], row[3], row[4], row[5], row[6]].join(' | ')).join('\n');
+      const reader = document.getElementById('splitReader');
+      reader.classList.remove('muted');
+      reader.textContent = `文件：${fileName}\n预览范围：分割后对应 Excel 文件前 5 行\n\n${header.join(' | ')}\n${divider}\n${body}`;
+    }
+
+    document.getElementById('splitBatchSelect').addEventListener('change', (event) => {
+      updateSplitReader(event.target.value);
+      saveCurrentSplitState();
+    });
+
+    document.getElementById('pushTest').addEventListener('click', () => {
+      const store = document.getElementById('splitStore').value;
+      if (!confirm(`确认先推出【${store}】测试线索 5 条？`)) return;
+      document.getElementById('formalState').className = 'status warn';
+      document.getElementById('formalState').textContent = '测试已推出，等待人工检查';
+      saveCurrentSplitState();
+    });
+
+    document.getElementById('pushFormal').addEventListener('click', () => {
+      const store = document.getElementById('splitStore').value;
+      if (!confirm(`确认推出【${store}】正式批次外呼？`)) return;
+      document.getElementById('formalState').className = 'status ok';
+      document.getElementById('formalState').textContent = '正式批次已推出';
+      saveCurrentSplitState();
+    });
+
+    document.getElementById('refreshCallStatus').addEventListener('click', refreshCurrentCallStatus);
+
+    document.getElementById('generateDaily').addEventListener('click', () => {
+      if (!confirm('确认执行 E:\\\\ai\\\\workflow\\\\龙星行报表工具_核心文件_260629\\\\main.py 生成今日日报？')) return;
+      document.getElementById('dailyStatus').className = 'status info';
+      document.getElementById('dailyStatus').textContent = '执行中';
+      document.getElementById('dailyStep1').className = 'status ok';
+      document.getElementById('dailyStep1').textContent = 'done';
+      document.getElementById('dailyStep2').className = 'status ok';
+      document.getElementById('dailyStep2').textContent = 'done';
+      document.getElementById('dailyStep3').className = 'status ok';
+      document.getElementById('dailyStep3').textContent = 'done';
+      document.getElementById('dailyLog').textContent = [
+        '[09:30:02] task_runs created: daily_report_260706',
+        '[09:30:03] Step 1/2 crawl data -> data/260706/',
+        '[09:30:42] Step 2/2 process reports',
+        '[09:31:08] output: 每日报告/长沙_每日报告_260706.txt',
+        '[09:31:10] output: 汇总表/广州售后_日度月度汇总表_260706.xlsx'
+      ].join('\n');
+      document.getElementById('reportBlocks').innerHTML = [
+        reportCard('长沙', '236', '68.4%', '42', '拒接'),
+        reportCard('骏宜', '188', '71.2%', '39', '暂时无法拨通'),
+        reportCard('翔鹏', '164', '63.9%', '31', '占线'),
+        reportCard('广州售后', '412', '66.8%', '77', '线路限制')
+      ].join('');
+      document.getElementById('dailyStatus').className = 'status ok';
+      document.getElementById('dailyStatus').textContent = '已完成';
+    });
+
+    function reportCard(name, total, rate, valid, top) {
+      return `<div class="report-section"><h3>${name}</h3><dl><div><dt>新增线索</dt><dd>${total}</dd></div><div><dt>接通率</dt><dd>${rate}</dd></div><div><dt>有效线索</dt><dd>${valid}</dd></div><div><dt>TOP 未接通</dt><dd>${top}</dd></div></dl></div>`;
+    }
+
+    document.querySelectorAll('.tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.tab').forEach(item => item.classList.remove('active'));
+        document.querySelectorAll('.tab-panel').forEach(item => item.classList.remove('active'));
+        tab.classList.add('active');
+        document.getElementById(`tab-${tab.dataset.tab}`).classList.add('active');
+      });
+    });
+  </script>
+</body>
+</html>

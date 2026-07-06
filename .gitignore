@@ -1,0 +1,47 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# Node / frontend
+node_modules/
+dist/
+build/
+coverage/
+
+# Environment and local config
+.env
+.env.*
+!.env.example
+*.local
+
+# OS/editor artifacts
+.DS_Store
+Thumbs.db
+__MACOSX/
+.vscode/
+.idea/
+
+# Runtime outputs and logs
+*.log
+线索变量脚本/glm-proxy/outputs/
+# Sensitive operational data and generated artifacts
+*.xlsx
+*.xls
+*.csv
+线索变量脚本/建银线索/
+线索变量脚本/glm-proxy/uploads/
+线索变量脚本/tmp-fixtures/
+龙星行报表工具_核心文件_260629/data/
+龙星行报表工具_核心文件_260629/_tracking/
+建银-线索自动预分割与导入脚本/建银-线索自动预分割与导入脚本/results/
+建银-线索自动预分割与导入脚本/建银-线索自动预分割与导入脚本/线索预分割/260*/
+建银-线索自动预分割与导入脚本/建银-线索自动预分割与导入脚本/线索预分割/手动导入/
+# External downloaded tool bundles
+线索变量脚本/agent-skills-main/
+线索变量脚本/agent-skills-main.zip
+**/.codex_run_*.py

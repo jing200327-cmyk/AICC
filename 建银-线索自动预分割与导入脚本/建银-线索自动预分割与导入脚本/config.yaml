@@ -1,0 +1,118 @@
+# ==================== 线索全自动导入系统 - 配置文件 ====================
+
+# 当前运行环境: test(内测) / prod(生产)
+environment: test
+
+# 全局设置
+settings:
+  client_id: "110011"              # 平台客户端ID
+  max_leads_per_window: 100       # 半小时内最大线索导入量
+  time_window_minutes: 30         # 限流时间窗口(分钟)
+  poll_interval_seconds: 30       # 任务状态轮询间隔(秒)
+  request_timeout_seconds: 30     # HTTP请求超时(秒)
+  max_retries: 3                  # 最大重试次数
+  data_dir: null                  # 指定Excel文件目录(留空则自动扫描最新日期目录)
+
+# ==================== 租户配置 ====================
+# 每个租户需配置内测(test)和生产(prod)两套环境参数
+# prefixes: 文件名前缀列表，支持多个别名匹配不同日期的文件命名
+# robot_id 和 dealer_id 可从外呼平台获取
+
+tenants:
+  - name: "襄阳林肯"
+    prefixes:
+      - "襄阳林肯"
+    environments:
+      test:
+        username: "jylk1234"
+        password: "123456"
+        robot_id: "1966046531004719106"
+        dealer_id: ""
+      prod:
+        username: ""
+        password: ""
+        robot_id: "2017169974917894146"
+        dealer_id: ""
+    task_name_template: "{tenant}{date}-{batch}"
+
+  - name: "天翔林肯"
+    prefixes:
+      - "天翔林肯"
+      - "武汉天翔"
+    environments:
+      test:
+        username: "jylk1234"
+        password: "123456"
+        robot_id: "1966046531004719106"
+        dealer_id: ""
+      prod:
+        username: "jywhtx"
+        password: "tx123456"
+        robot_id: "2031586387210866689"
+        dealer_id: ""
+    task_name_template: "{tenant}{date}-{batch}"
+
+  - name: "武汉骏马"
+    prefixes:
+      - "武汉骏马"
+    environments:
+      test:
+        username: "jyym1234"
+        password: "123456"
+        robot_id: "1962781114215600129"
+        dealer_id: ""
+      prod:
+        username: "jywhjm12345"
+        password: "123456wuhanjunma"
+        robot_id: "1998640825214840834"
+        dealer_id: ""
+    task_name_template: "{tenant}{date}-{batch}"
+
+  - name: "银马"
+    prefixes:
+      - "银马"
+    environments:
+      test:
+        username: "jyym1234"
+        password: "123456"
+        robot_id: "1962781114215600129"
+        dealer_id: ""
+      prod:
+        username: "jyshym1234"
+        password: "123456"
+        robot_id: "1962781114215600129"
+        dealer_id: ""
+    task_name_template: "{tenant}{date}-{batch}"
+
+  - name: "美诚林肯"
+    prefixes:
+      - "美诚林肯"
+      - "林肯美诚"
+    environments:
+      test:
+        username: "jylk1234"
+        password: "123456"
+        robot_id: "1966046531004719106"
+        dealer_id: ""
+      prod:
+        username: "jyshmc123456"
+        password: "123456"
+        robot_id: "2007756738520502273"
+        dealer_id: ""
+    task_name_template: "{tenant}{date}-{batch}"
+
+  - name: "合肥马自达"
+    prefixes:
+      - "合肥马自达"
+    environments:
+      test:
+        username: "jysh1234"
+        password: "sh123456"
+        robot_id: "1966055742686158849"
+        dealer_id: ""
+      prod:
+        username: "jyshmzd"
+        password: "123456"
+        robot_id: "2018209131387912193"
+        dealer_id: ""
+    task_name_template: "{tenant}{date}-{batch}"
