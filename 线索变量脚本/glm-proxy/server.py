@@ -28,6 +28,10 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from lead_import.api import create_router
 from lead_import.registry import StoreScriptRegistry
 from lead_import.service import LeadImportService
+from outcall.api import create_router as create_outcall_router
+from outcall.service import OutcallService
+from split_import.api import create_router as create_split_router
+from split_import.service import SplitImportService
 
 # ─── Config ───────────────────────────────────────────────────────────
 API_KEY = os.environ.get("GLM_PROXY_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN")
@@ -74,6 +78,30 @@ lead_import_service = LeadImportService(
     input_root=LEAD_IMPORT_INPUT_DIR,
 )
 app.include_router(create_router(lead_import_service))
+
+AICC_ROOT = os.path.dirname(PROJECT_ROOT)
+SPLIT_IMPORT_ROOT = os.environ.get(
+    "SPLIT_IMPORT_ROOT",
+    os.path.join(
+        AICC_ROOT,
+        "建银-线索自动预分割与导入脚本",
+        "建银-线索自动预分割与导入脚本",
+        "线索预分割",
+    ),
+)
+split_import_service = SplitImportService(SPLIT_IMPORT_ROOT)
+app.include_router(create_split_router(split_import_service))
+
+OUTCALL_PROJECT_ROOT = os.environ.get(
+    "OUTCALL_PROJECT_ROOT",
+    os.path.join(AICC_ROOT, "建银-线索自动预分割与导入脚本", "建银-线索自动预分割与导入脚本"),
+)
+OUTCALL_CONFIG_PATH = os.environ.get(
+    "OUTCALL_CONFIG_PATH",
+    os.path.join(OUTCALL_PROJECT_ROOT, "config.yaml"),
+)
+outcall_service = OutcallService(OUTCALL_CONFIG_PATH, OUTCALL_PROJECT_ROOT, split_import_service)
+app.include_router(create_outcall_router(outcall_service))
 
 
 @app.get("/health")

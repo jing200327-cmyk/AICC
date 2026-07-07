@@ -328,6 +328,22 @@
       padding-left: 12px;
       color: #aebbd0;
       font-size: 13px;
+      position: relative;
+    }
+
+    .submenu button.active-store {
+      background: rgba(59, 130, 246, 0.16);
+      color: #fff;
+      box-shadow: inset 3px 0 0 #38bdf8;
+    }
+
+    .submenu button.active-store::after {
+      content: "";
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #38bdf8;
+      margin-left: auto;
     }
 
     .side-foot {
@@ -789,6 +805,19 @@
       line-height: 1.6;
     }
 
+    .outcall-box {
+      margin-top: 16px;
+      border: 1px solid #d8e2ef;
+      border-radius: 8px;
+      padding: 14px;
+      background: #fbfdff;
+    }
+
+    .outcall-box h3 {
+      margin: 0 0 12px;
+      font-size: 15px;
+      color: #0f172a;
+    }
     .mobile-menu {
       display: none;
     }
@@ -927,7 +956,7 @@
         <button class="nav active" data-page="lead"><span>⬆</span>线索导入</button>
         <button class="nav" data-page="split"><span>▦</span>线索预分割&自动外呼</button>
         <div class="submenu" aria-label="线索预分割自动外呼门店">
-          <button data-store="合肥马自达">合肥马自达</button>
+          <button class="active-store" data-store="合肥马自达">合肥马自达</button>
           <button data-store="美诚林肯">美诚林肯</button>
           <button data-store="天翔林肯">天翔林肯</button>
           <button data-store="武汉骏马">武汉骏马</button>
@@ -980,7 +1009,7 @@
                   <select class="select" id="leadStore">
                     <option>合肥海康达</option>
                     <option selected>合肥马自达</option>
-                    <option>骏马众诚</option>
+                    <option data-script="线索变量脚本/线索变量脚本/骏马众诚.py">骏马众诚</option>
                     <option>骏马众城-上月保养</option>
                     <option>林肯美诚</option>
                     <option>天翔林肯</option>
@@ -1057,34 +1086,44 @@
               </div>
               <div class="panel-body">
                 <div class="field">
-                  <label for="splitStore">门店</label>
-                  <select class="select" id="splitStore">
-                    <option selected>合肥马自达</option>
-                    <option>美诚林肯</option>
-                    <option>天翔林肯</option>
-                    <option>武汉骏马</option>
-                    <option>银马</option>
-                  </select>
+                  <label>当前门店</label>
+                  <div class="store-lock"><strong id="splitStoreFixed">合肥马自达</strong><span>由左侧门店菜单确定</span></div>
                 </div>
                 <div class="upload-zone">
-                  <strong>请上传今日要外呼的线索模板</strong>
-                  <span class="hint">系统会先做列名、手机号、重复导入与批次容量检查。</span>
-                  <input id="splitFile" type="file" accept=".xlsx,.xls,.csv">
+                  <strong>请选择对应门店待导入线索-模板</strong>
+                  <span class="hint">文件来自固定目录：E:\ai\workflow\AICC\建银-线索自动预分割与导入脚本\建银-线索自动预分割与导入脚本\线索预分割</span>
+                  <div class="field" style="width:min(520px,100%);margin:0 auto;text-align:left;">
+                    <label for="splitFileSelect">选择文件</label>
+                    <select class="select" id="splitFileSelect">
+                      <option value="">请先刷新文件列表</option>
+                    </select>
+                    <div class="file-path-hint" id="splitFilePathHint">仅显示当前门店对应的 .xlsx 模板文件。</div>
+                  </div>
                   <div class="toolbar" style="justify-content:center;">
+                    <button class="btn" id="refreshSplitFiles" type="button">刷新文件列表</button>
                     <button class="btn primary" id="previewSplit" type="button">预览分割结果</button>
-                    <button class="btn" type="button">保存规则草稿</button>
                   </div>
                 </div>
                 <div class="split-summary">
-                  <div class="stat"><span>测试线索</span><strong>5</strong></div>
+                  <div class="stat"><span>测试线索</span><strong id="testCount">0</strong></div>
                   <div class="stat"><span>正式批次</span><strong id="batchCount">0</strong></div>
-                  <div class="stat"><span>单批数量</span><strong>45</strong></div>
+                  <div class="stat"><span>总数量</span><strong id="totalSplitCount">0</strong></div>
                   <div class="stat"><span>小时上限</span><strong>100</strong></div>
                 </div>
-                <div class="notice">关键操作前必须人工确认。测试批次推出后，正式批次按钮才会进入可操作状态。</div>
-                <div class="toolbar" style="margin-top:14px;">
-                  <button class="btn warning" id="pushTest" type="button">推出测试线索</button>
-                  <button class="btn success" id="pushFormal" type="button">推出正式线索</button>
+                <div class="outcall-box">
+                  <h3>自动外呼</h3>
+                  <div class="field">
+                    <label for="outcallEnvironment">外呼环境</label>
+                    <select class="select" id="outcallEnvironment">
+                      <option value="test">测试环境（uat.aidcc.cn）</option>
+                      <option value="prod">生产环境（service.aidcc.cn）</option>
+                    </select>
+                  </div>
+                  <div class="notice">关键操作前必须人工确认。测试环境用于开发调试，生产环境会向对应门店平台发起真实外呼。</div>
+                  <div class="toolbar" style="margin-top:14px;">
+                    <button class="btn warning" id="pushTest" type="button">推出测试线索</button>
+                    <button class="btn success" id="pushFormal" type="button">推出正式线索</button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1319,7 +1358,19 @@
     document.getElementById('mobileMenu').addEventListener('change', (event) => showPage(event.target.value));
 
     const splitStoreNames = ['合肥马自达', '美诚林肯', '天翔林肯', '武汉骏马', '银马'];
-    let currentSplitStore = document.getElementById('splitStore').value;
+    const splitApiBaseUrl = 'http://127.0.0.1:18765/api/leads/split';
+    const outcallApiBaseUrl = 'http://127.0.0.1:18765/api/leads/outcall';
+    const splitStoreCodeMap = {
+      '合肥马自达': 'hefei_mazda',
+      '美诚林肯': 'meicheng_lincoln',
+      '天翔林肯': 'tianxiang_lincoln',
+      '武汉骏马': 'wuhan_junma',
+      '银马': 'yinma',
+    };
+    const splitPreviewJobs = {};
+    const outcallJobs = {};
+    const outcallPollTimers = {};
+    let currentSplitStore = '合肥马自达';
     const splitBatchOptionsHtml = [
       '<option value="test">测试批次 - 5 条</option>',
       '<option value="formal2">正式批次 2 - 45 条</option>',
@@ -1334,12 +1385,19 @@
       return {
         splitStatusClass: 'status warn',
         splitStatusText: '待预览',
+        testCount: '0',
         batchCount: '0',
+        totalSplitCount: '0',
         formalStateClass: 'status gray',
         formalStateText: '正式批次未推出',
         batchOptionsHtml: '<option>请先预览分割结果</option>',
         batchDisabled: true,
         selectedBatch: '',
+        fileOptionsHtml: '<option value="">请先刷新文件列表</option>',
+        selectedFile: '',
+        filePathHint: '仅显示当前门店对应的 .xlsx 模板文件。',
+        filesLoaded: false,
+        outcallEnvironment: 'test',
         splitReaderText: defaultSplitReaderText,
         splitReaderMuted: true,
         callStatusClass: 'status gray',
@@ -1352,16 +1410,24 @@
 
     function saveCurrentSplitState() {
       const batchSelect = document.getElementById('splitBatchSelect');
+      const fileSelect = document.getElementById('splitFileSelect');
       const splitReader = document.getElementById('splitReader');
       splitStoreStates[currentSplitStore] = {
         splitStatusClass: document.getElementById('splitStatus').className,
         splitStatusText: document.getElementById('splitStatus').textContent,
+        testCount: document.getElementById('testCount').textContent,
         batchCount: document.getElementById('batchCount').textContent,
+        totalSplitCount: document.getElementById('totalSplitCount').textContent,
         formalStateClass: document.getElementById('formalState').className,
         formalStateText: document.getElementById('formalState').textContent,
         batchOptionsHtml: batchSelect.innerHTML,
         batchDisabled: batchSelect.disabled,
         selectedBatch: batchSelect.value,
+        fileOptionsHtml: fileSelect.innerHTML,
+        selectedFile: fileSelect.value,
+        filePathHint: document.getElementById('splitFilePathHint').textContent,
+        filesLoaded: !fileSelect.innerHTML.includes('请先刷新文件列表') && !fileSelect.innerHTML.includes('正在读取固定目录'),
+        outcallEnvironment: document.getElementById('outcallEnvironment').value,
         splitReaderText: splitReader.textContent,
         splitReaderMuted: splitReader.classList.contains('muted'),
         callStatusClass: document.getElementById('callStatusState').className,
@@ -1373,13 +1439,23 @@
     function renderSplitState(store) {
       const state = splitStoreStates[store] || createSplitStoreState();
       currentSplitStore = store;
-      document.getElementById('splitStore').value = store;
+      document.getElementById('splitStoreFixed').textContent = store;
       document.getElementById('splitStoreTag').textContent = `当前门店：${store}`;
+      document.querySelectorAll('.submenu button').forEach(btn => {
+        btn.classList.toggle('active-store', btn.dataset.store === store);
+      });
       document.getElementById('splitStatus').className = state.splitStatusClass;
       document.getElementById('splitStatus').textContent = state.splitStatusText;
+      document.getElementById('testCount').textContent = state.testCount;
       document.getElementById('batchCount').textContent = state.batchCount;
+      document.getElementById('totalSplitCount').textContent = state.totalSplitCount;
       document.getElementById('formalState').className = state.formalStateClass;
       document.getElementById('formalState').textContent = state.formalStateText;
+      const fileSelect = document.getElementById('splitFileSelect');
+      fileSelect.innerHTML = state.fileOptionsHtml;
+      fileSelect.value = state.selectedFile;
+      document.getElementById('splitFilePathHint').textContent = state.filePathHint;
+      document.getElementById('outcallEnvironment').value = state.outcallEnvironment || 'test';
       const batchSelect = document.getElementById('splitBatchSelect');
       batchSelect.innerHTML = state.batchOptionsHtml;
       batchSelect.disabled = state.batchDisabled;
@@ -1394,7 +1470,9 @@
 
     function switchSplitStore(store) {
       saveCurrentSplitState();
+      const shouldLoadFiles = !splitStoreStates[store]?.filesLoaded;
       renderSplitState(store);
+      if (shouldLoadFiles) loadSplitFiles(store);
     }
 
     const callStatusSamples = {
@@ -1405,11 +1483,150 @@
       '武汉骏马': ['武汉骏马-测试 已外呼5条，接通3条，接通率60%', '武汉骏马-2 已外呼45条，接通30条，接通率66.7%', '武汉骏马-3 已外呼45条，接通28条，接通率62.2%', '武汉骏马-4 已外呼45条，接通29条，接通率64.4%', '武汉骏马-5 已外呼31条，接通17条，接通率54.8%'],
     };
 
-    function refreshCurrentCallStatus() {
-      const lines = callStatusSamples[currentSplitStore] || [`${currentSplitStore}-测试 已外呼5条，接通3条，接通率60%`];
-      document.getElementById('callStatusState').className = 'status ok';
-      document.getElementById('callStatusState').textContent = '已更新';
-      document.getElementById('callStatusReader').textContent = lines.join('\n');
+    function getCurrentOutcallJobId() {
+      return outcallJobs[currentSplitStore]?.latest || '';
+    }
+
+    function formatOutcallMode(mode) {
+      return mode === 'formal' ? '正式线索' : '测试线索';
+    }
+
+    function renderOutcallJobStatus(job) {
+      const fileLines = (job.files || []).map(file => `${file.batch_name} ${file.filename} ${file.row_count}条`);
+      const resultLines = (job.batch_results || []).map(item => {
+        const state = item.ok ? '成功' : '失败';
+        const count = item.lead_count ? `，线索${item.lead_count}条` : '';
+        const actual = item.actual_count ? `，接通${item.actual_count}条` : '';
+        return `${item.batch} ${state}${count}${actual}，${item.message || ''}`;
+      });
+      const lines = [
+        `门店：${job.store_name}`,
+        `环境：${job.environment_name}（${job.base_url}）`,
+        `模式：${formatOutcallMode(job.mode)}`,
+        `任务状态：${job.status} / ${job.state || '处理中'}`,
+        `进度：${job.progress || '0/0'}`,
+        `当前任务：${job.task_id || '暂未创建'}`,
+        `消息：${job.message || '等待平台返回状态'}`,
+        `文件：${fileLines.join('；') || '无'}`,
+      ];
+      if (resultLines.length) lines.push(`批次结果：\n${resultLines.join('\n')}`);
+      return lines.join('\n');
+    }
+
+    async function refreshCurrentCallStatus() {
+      const jobId = getCurrentOutcallJobId();
+      if (!jobId) {
+        const lines = callStatusSamples[currentSplitStore] || [`${currentSplitStore}-测试 已外呼5条，接通3条，接通率60%`];
+        document.getElementById('callStatusState').className = 'status ok';
+        document.getElementById('callStatusState').textContent = '已更新';
+        document.getElementById('callStatusReader').textContent = lines.join('\n');
+        saveCurrentSplitState();
+        return;
+      }
+      document.getElementById('callStatusState').className = 'status info';
+      document.getElementById('callStatusState').textContent = '读取中';
+      try {
+        const response = await fetch(`${outcallApiBaseUrl}/jobs/${jobId}`);
+        const body = await parseApiResponse(response);
+        if (!response.ok) throw body.error || body;
+        document.getElementById('callStatusState').className = body.status === 'failed' ? 'status danger' : (body.status === 'completed' ? 'status ok' : 'status info');
+        document.getElementById('callStatusState').textContent = body.status === 'running' ? '外呼中' : body.status;
+        document.getElementById('callStatusReader').textContent = renderOutcallJobStatus(body);
+      } catch (error) {
+        document.getElementById('callStatusState').className = 'status danger';
+        document.getElementById('callStatusState').textContent = '读取失败';
+        document.getElementById('callStatusReader').textContent = formatSplitError(error);
+      }
+      saveCurrentSplitState();
+    }
+
+    function rememberOutcallJob(mode, job) {
+      if (!outcallJobs[currentSplitStore]) outcallJobs[currentSplitStore] = {};
+      outcallJobs[currentSplitStore][mode] = job.job_id;
+      outcallJobs[currentSplitStore].latest = job.job_id;
+    }
+
+    function pollOutcallJob(jobId, store) {
+      if (outcallPollTimers[jobId]) clearTimeout(outcallPollTimers[jobId]);
+      outcallPollTimers[jobId] = setTimeout(async () => {
+        if (currentSplitStore === store) await refreshCurrentCallStatus();
+        const latest = outcallJobs[store]?.latest;
+        if (latest === jobId) {
+          const stateText = document.getElementById('callStatusState').textContent;
+          if (['外呼中', '读取中', 'running'].includes(stateText)) pollOutcallJob(jobId, store);
+        }
+      }, 5000);
+    }
+    function formatSplitError(error) {
+      const code = error?.code || 'REQUEST_FAILED';
+      const message = error?.message || '请求失败，请检查后端服务是否已启动';
+      const detail = error?.detail ? `：${error.detail}` : '';
+      return `${code} - ${message}${detail}`;
+    }
+
+    async function loadSplitFiles(store) {
+      const storeCode = splitStoreCodeMap[store];
+      const fileSelect = document.getElementById('splitFileSelect');
+      fileSelect.disabled = true;
+      fileSelect.innerHTML = '<option value="">正在读取固定目录...</option>';
+      document.getElementById('splitFilePathHint').textContent = '正在读取线索预分割固定目录。';
+      try {
+        const response = await fetch(`${splitApiBaseUrl}/files?store_code=${encodeURIComponent(storeCode)}`);
+        const body = await parseApiResponse(response);
+        if (!response.ok) throw body.error || body;
+        if (!body.files?.length) {
+          fileSelect.innerHTML = '<option value="">该门店暂无可选 Excel 文件</option>';
+          document.getElementById('splitFilePathHint').textContent = '固定目录中未找到当前门店对应的 .xlsx 文件。';
+        } else {
+          fileSelect.innerHTML = body.files.map(file => `<option value="${file.filename}" data-path="${file.path}">${file.filename}</option>`).join('');
+          const selected = fileSelect.value;
+          const file = body.files.find(item => item.filename === selected) || body.files[0];
+          fileSelect.value = file.filename;
+          document.getElementById('splitFilePathHint').textContent = file.path;
+        }
+        fileSelect.disabled = false;
+        saveCurrentSplitState();
+      } catch (error) {
+        fileSelect.innerHTML = '<option value="">文件列表读取失败</option>';
+        fileSelect.disabled = false;
+        document.getElementById('splitFilePathHint').textContent = formatSplitError(error);
+        saveCurrentSplitState();
+      }
+    }
+
+    function getSplitBatchOrder(output) {
+      if (output.batch_key === 'test' || output.filename.includes('-测试')) return 0;
+      const numberMatch = output.filename.match(/-(\d+)\.xlsx$/) || String(output.batch_key || '').match(/formal(\d+)/);
+      return numberMatch ? Number(numberMatch[1]) : 9999;
+    }
+
+    function sortSplitOutputs(outputs) {
+      return [...outputs].sort((a, b) => getSplitBatchOrder(a) - getSplitBatchOrder(b));
+    }
+
+    function renderSplitBatchOptions(outputs) {
+      const batchSelect = document.getElementById('splitBatchSelect');
+      const sortedOutputs = sortSplitOutputs(outputs);
+      batchSelect.disabled = false;
+      batchSelect.innerHTML = sortedOutputs.map(output => `<option value="${output.batch_key}">${output.batch_name} - ${output.row_count} 条 - ${output.filename}</option>`).join('');
+      batchSelect.value = sortedOutputs[0]?.batch_key || '';
+    }
+
+    function applySplitPreview(job) {
+      job.outputs = sortSplitOutputs(job.outputs || []);
+      splitPreviewJobs[currentSplitStore] = job;
+      const testCount = job.outputs.find(output => output.batch_key === 'test')?.row_count || 0;
+      const formalCount = job.outputs.filter(output => output.batch_key !== 'test').length;
+      const totalCount = job.outputs.reduce((sum, output) => sum + (Number(output.row_count) || 0), 0);
+      document.getElementById('splitStatus').className = 'status ok';
+      document.getElementById('splitStatus').textContent = '预览完成';
+      document.getElementById('testCount').textContent = String(testCount);
+      document.getElementById('batchCount').textContent = String(formalCount);
+      document.getElementById('totalSplitCount').textContent = String(totalCount);
+      renderSplitBatchOptions(job.outputs);
+      updateSplitReader(document.getElementById('splitBatchSelect').value);
+      document.getElementById('formalState').className = 'status gray';
+      document.getElementById('formalState').textContent = `已生成 ${job.outputs.length} 个分割文件，待推出`;
       saveCurrentSplitState();
     }
 
@@ -1420,9 +1637,17 @@
       });
     });
 
-    document.getElementById('splitStore').addEventListener('change', (event) => {
-      switchSplitStore(event.target.value);
+    document.getElementById('refreshSplitFiles').addEventListener('click', () => {
+      loadSplitFiles(currentSplitStore);
     });
+
+    document.getElementById('splitFileSelect').addEventListener('change', (event) => {
+      const selectedOption = event.target.selectedOptions[0];
+      document.getElementById('splitFilePathHint').textContent = selectedOption?.dataset.path || '已选择当前门店对应的 Excel 模板文件。';
+      saveCurrentSplitState();
+    });
+
+    document.getElementById('outcallEnvironment').addEventListener('change', saveCurrentSplitState);
 
     const leadApiBaseUrl = 'http://127.0.0.1:18765/api/leads/import';
     const leadStoreCodeMap = {
@@ -1434,6 +1659,9 @@
       '天翔林肯': 'tianxiang_lincoln',
       '武汉银马': 'wuhan_yinma',
       '襄阳林肯': 'xiangyang_lincoln',
+    };
+    const leadStoreScriptMap = {
+      '骏马众诚': '线索变量脚本/线索变量脚本/骏马众诚.py',
     };
     let leadImportJobDetail = null;
 
@@ -1484,7 +1712,7 @@
       applyLeadSummary(detail);
       const detected = detail.detected_store;
       const inputPath = detail.input_file?.saved_path || '未返回保存路径';
-      const scriptPath = (detail.logs || []).find(line => line.includes('.py')) || '脚本由门店注册表匹配';
+      const scriptPath = leadStoreScriptMap[selectedStore] || (detail.logs || []).find(line => line.includes('.py')) || '脚本由门店注册表匹配';
       if (detail.status === 'completed') {
         setLeadStatus('status ok', '校验通过');
         setLeadOutputState('status warn', 'TXT 已生成，待人工确认读取');
@@ -1586,16 +1814,34 @@
       }
     });
 
-    document.getElementById('previewSplit').addEventListener('click', () => {
-      document.getElementById('splitStatus').className = 'status ok';
-      document.getElementById('splitStatus').textContent = '预览完成';
-      document.getElementById('batchCount').textContent = '4';
-      const batchSelect = document.getElementById('splitBatchSelect');
-      batchSelect.disabled = false;
-      batchSelect.innerHTML = splitBatchOptionsHtml;
-      batchSelect.value = 'test';
-      updateSplitReader('test');
-      saveCurrentSplitState();
+    document.getElementById('previewSplit').addEventListener('click', async () => {
+      const storeCode = splitStoreCodeMap[currentSplitStore];
+      const filename = document.getElementById('splitFileSelect').value;
+      if (!filename) {
+        document.getElementById('splitStatus').className = 'status danger';
+        document.getElementById('splitStatus').textContent = '未选择文件';
+        document.getElementById('splitReader').textContent = '请先点击“刷新文件列表”，并选择当前门店对应的 Excel 模板文件。';
+        return;
+      }
+      document.getElementById('splitStatus').className = 'status info';
+      document.getElementById('splitStatus').textContent = '分割处理中';
+      document.getElementById('splitReader').classList.add('muted');
+      document.getElementById('splitReader').textContent = `正在执行 ${currentSplitStore} 的分割脚本，文件入口：${filename}`;
+      try {
+        const response = await fetch(`${splitApiBaseUrl}/preview`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ store_code: storeCode, filename }),
+        });
+        const body = await parseApiResponse(response);
+        if (!response.ok) throw body.error || body;
+        applySplitPreview(body);
+      } catch (error) {
+        document.getElementById('splitStatus').className = 'status danger';
+        document.getElementById('splitStatus').textContent = '预览失败';
+        document.getElementById('splitReader').textContent = formatSplitError(error);
+        saveCurrentSplitState();
+      }
     });
 
     const splitBatchSamples = {
@@ -1637,16 +1883,20 @@
     };
 
     function updateSplitReader(batchKey) {
-      const rows = splitBatchSamples[batchKey] || [];
-      const batchSelect = document.getElementById('splitBatchSelect');
-      const batchLabel = batchSelect.selectedOptions[0]?.textContent || '测试批次 - 5 条';
-      const fileName = `${document.getElementById('splitStore').value}-${batchLabel.split(' - ')[0]}.xlsx`;
-      const header = ['行号', '客户姓氏', '被叫号码', '意向车型', '来源平台', '变量'];
-      const divider = '---- | -------- | ----------- | -------- | -------- | ----------------------------------------';
-      const body = rows.map(row => [row[1], row[2], row[3], row[4], row[5], row[6]].join(' | ')).join('\n');
+      const job = splitPreviewJobs[currentSplitStore];
+      const output = job?.outputs?.find(item => item.batch_key === batchKey);
       const reader = document.getElementById('splitReader');
+      if (!output) {
+        reader.classList.add('muted');
+        reader.textContent = '请先预览分割结果。';
+        return;
+      }
+      const columns = output.columns || [];
+      const displayColumns = columns.length ? columns : ['客户姓氏', '被叫号码', '客户真实手机号', '意向车型', '来源平台', '变量'];
+      const divider = displayColumns.map(() => '--------').join(' | ');
+      const rows = (output.preview_rows || []).map(row => displayColumns.map(column => row[column] ?? '').join(' | ')).join('\n');
       reader.classList.remove('muted');
-      reader.textContent = `文件：${fileName}\n预览范围：分割后对应 Excel 文件前 5 行\n\n${header.join(' | ')}\n${divider}\n${body}`;
+      reader.textContent = `门店：${job.store_name}\n执行脚本：${job.script_name}\n源文件：${job.source_file.filename}\n输出文件：${output.filename}\n保存目录：${job.output_dir}\n预览范围：分割后对应 Excel 文件前 5 行\n\n${displayColumns.join(' | ')}\n${divider}\n${rows || '该批次无有效记录'}`;
     }
 
     document.getElementById('splitBatchSelect').addEventListener('change', (event) => {
@@ -1654,22 +1904,54 @@
       saveCurrentSplitState();
     });
 
-    document.getElementById('pushTest').addEventListener('click', () => {
-      const store = document.getElementById('splitStore').value;
-      if (!confirm(`确认先推出【${store}】测试线索 5 条？`)) return;
-      document.getElementById('formalState').className = 'status warn';
-      document.getElementById('formalState').textContent = '测试已推出，等待人工检查';
+    async function startOutcall(mode) {
+      const store = currentSplitStore;
+      const environment = document.getElementById('outcallEnvironment').value;
+      const splitJob = splitPreviewJobs[currentSplitStore];
+      if (!splitJob?.job_id) {
+        document.getElementById('callStatusState').className = 'status warn';
+        document.getElementById('callStatusState').textContent = '请先预览';
+        document.getElementById('callStatusReader').textContent = '请先完成“预览分割结果”，生成测试/正式批次 Excel 后再发起自动外呼。';
+        saveCurrentSplitState();
+        return;
+      }
+      const modeText = formatOutcallMode(mode);
+      const envText = environment === 'prod' ? '生产环境' : '测试环境';
+      if (!confirm(`确认在【${envText}】向【${store}】推出${modeText}？`)) return;
+      document.getElementById('callStatusState').className = 'status info';
+      document.getElementById('callStatusState').textContent = '启动中';
+      document.getElementById('callStatusReader').textContent = `正在提交自动外呼任务：${store} / ${envText} / ${modeText}`;
+      try {
+        const response = await fetch(`${outcallApiBaseUrl}/jobs`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            store_code: splitStoreCodeMap[currentSplitStore],
+            environment,
+            mode,
+            split_job_id: splitJob.job_id,
+          }),
+        });
+        const body = await parseApiResponse(response);
+        if (!response.ok) throw body.error || body;
+        rememberOutcallJob(mode, body);
+        document.getElementById('formalState').className = mode === 'test' ? 'status warn' : 'status ok';
+        document.getElementById('formalState').textContent = mode === 'test' ? '测试外呼已启动，等待人工检查' : '正式批次外呼已启动';
+        document.getElementById('callStatusState').className = 'status info';
+        document.getElementById('callStatusState').textContent = '外呼中';
+        document.getElementById('callStatusReader').textContent = renderOutcallJobStatus(body);
+        pollOutcallJob(body.job_id, currentSplitStore);
+      } catch (error) {
+        document.getElementById('callStatusState').className = 'status danger';
+        document.getElementById('callStatusState').textContent = '启动失败';
+        document.getElementById('callStatusReader').textContent = formatSplitError(error);
+      }
       saveCurrentSplitState();
-    });
+    }
 
-    document.getElementById('pushFormal').addEventListener('click', () => {
-      const store = document.getElementById('splitStore').value;
-      if (!confirm(`确认推出【${store}】正式批次外呼？`)) return;
-      document.getElementById('formalState').className = 'status ok';
-      document.getElementById('formalState').textContent = '正式批次已推出';
-      saveCurrentSplitState();
-    });
+    document.getElementById('pushTest').addEventListener('click', () => startOutcall('test'));
 
+    document.getElementById('pushFormal').addEventListener('click', () => startOutcall('formal'));
     document.getElementById('refreshCallStatus').addEventListener('click', refreshCurrentCallStatus);
 
     document.getElementById('generateDaily').addEventListener('click', () => {

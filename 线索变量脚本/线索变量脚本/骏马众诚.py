@@ -1,11 +1,11 @@
-import pandas as pd
+﻿import pandas as pd
 import json
 import os
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
 
 # ================= 读取 Excel =================
-df = pd.read_excel(r"/Users/tangtangtang/工作/冰兰智能/建银-线索预处理/骏马众城/6.2号保养线索.xlsx")
+df = pd.read_excel(r"E:\ai\workflow\线索变量脚本\建银线索\骏马众诚\保养线索.xlsx")
 
 print(f"✅ 成功读取Excel文件")
 print(f"📊 数据形状: {df.shape}")
@@ -158,7 +158,7 @@ for index, row in df.iterrows():
 
 
 # ================= 保存文件 =================
-save_path = r'/Users/tangtangtang/工作/冰兰智能/建银-线索预处理/骏马众城/6.2号保养线索.txt'
+save_path = r'E:\ai\workflow\线索变量脚本\建银线索\骏马众诚\保养线索.txt'
 os.makedirs(os.path.dirname(save_path), exist_ok=True)
 
 with open(save_path, 'w', encoding='utf-8') as f:
@@ -171,4 +171,5 @@ print(f"📊 共生成 {len(output_lines)} 条记录")
 print("\n📄 前5条数据预览：")
 for i, line in enumerate(output_lines[:5]):
     print(f"{i + 1}: {line}")
+
 

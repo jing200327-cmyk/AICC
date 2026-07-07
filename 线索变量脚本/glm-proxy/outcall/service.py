@@ -1,0 +1,308 @@
+from __future__ import annotations
+
+import asyncio
+import sys
+import uuid
+from dataclasses import asdict
+from datetime import datetime
+from pathlib import Path
+from typing import Any
+
+from split_import.models import SplitJob, SplitOutputFile, SplitSourceFile
+from split_import.service import SplitImportService
+
+from .models import OutcallFile, OutcallJob
+
+
+BASE_URLS = {'test': 'https://uat.aidcc.cn', 'prod': 'https://service.aidcc.cn'}
+ENVIRONMENT_NAMES = {'test': '测试环境', 'prod': '生产环境'}
+
+
+class OutcallError(Exception):
+    code = 'OUTCALL_ERROR'
+    message = 'Outcall failed'
+
+    def __init__(self, detail: str = ''):
+        super().__init__(detail or self.message)
+        self.detail = detail
+
+
+class InvalidOutcallEnvironmentError(OutcallError):
+    code = 'INVALID_OUTCALL_ENVIRONMENT'
+    message = 'Outcall environment must be test or prod'
+
+
+class InvalidOutcallModeError(OutcallError):
+    code = 'INVALID_OUTCALL_MODE'
+    message = 'Outcall mode must be test or formal'
+
+
+class SplitJobNotFoundError(OutcallError):
+    code = 'SPLIT_JOB_NOT_FOUND'
+    message = 'Split preview job does not exist'
+
+
+class SplitJobNotReadyError(OutcallError):
+    code = 'SPLIT_JOB_NOT_READY'
+    message = 'Split preview job is not completed'
+
+
+class OutcallTenantNotFoundError(OutcallError):
+    code = 'OUTCALL_TENANT_NOT_FOUND'
+    message = 'Tenant is not configured in config.yaml'
+
+
+class OutcallFileNotFoundError(OutcallError):
+    code = 'OUTCALL_FILE_NOT_FOUND'
+    message = 'No split output file is available for this outcall mode'
+
+
+class OutcallService:
+    def __init__(self, config_path: Path, source_root: Path, split_service: SplitImportService):
+        self.config_path = Path(config_path)
+        self.source_root = Path(source_root)
+        self.split_service = split_service
+        self.jobs: dict[str, OutcallJob] = {}
+        self.statuses: dict[str, Any] = {}
+        self.tasks: dict[str, asyncio.Task] = {}
+
+    def start_job(self, store_code: str, environment: str, mode: str, split_job_id: str) -> OutcallJob:
+        environment = self._validate_environment(environment)
+        mode = self._validate_mode(mode)
+        split_job = self._get_split_job(store_code, split_job_id)
+        tenant, config, excel_cls, status_cls, process_tenant = self._load_tenant(split_job.store_name, environment)
+        files = self._select_files(split_job, tenant.name, mode, excel_cls)
+
+        now = datetime.now().isoformat()
+        job = OutcallJob(
+            job_id=f'outcall_{datetime.now().strftime("%Y%m%d")}_{uuid.uuid4().hex[:10]}',
+            status='running',
+            environment=environment,
+            environment_name=ENVIRONMENT_NAMES[environment],
+            base_url=config.base_url,
+            store_code=store_code,
+            store_name=tenant.name,
+            mode=mode,
+            split_job_id=split_job_id,
+            files=[OutcallFile(
+                batch_key=getattr(item, 'batch_key', ''),
+                batch_name=file.batch_name,
+                filename=file.file_path.name,
+                path=str(file.file_path),
+                row_count=getattr(item, 'row_count', 0),
+            ) for item, file in files],
+            created_at=now,
+            updated_at=now,
+        )
+        status = status_cls(tenant.name)
+        self.jobs[job.job_id] = job
+        self.statuses[job.job_id] = status
+        self.tasks[job.job_id] = asyncio.create_task(
+            self._run_job(job.job_id, config, tenant, [file for _, file in files], status, process_tenant)
+        )
+        self._sync_status(job.job_id)
+        return self.jobs[job.job_id]
+
+    def get_job(self, job_id: str) -> OutcallJob | None:
+        self._sync_status(job_id)
+        return self.jobs.get(job_id)
+
+    def terminate_job(self, job_id: str) -> OutcallJob | None:
+        status = self.statuses.get(job_id)
+        if status:
+            status.request_terminate()
+        task = self.tasks.get(job_id)
+        if task and not task.done():
+            task.cancel()
+        job = self.jobs.get(job_id)
+        if job:
+            job.status = 'terminated'
+            job.state = '已终止'
+            job.message = '用户手动终止'
+            job.updated_at = datetime.now().isoformat()
+        return job
+
+    async def _run_job(self, job_id: str, config: Any, tenant: Any, files: list[Any], status: Any, process_tenant: Any):
+        job = self.jobs[job_id]
+        try:
+            status.state = '启动中'
+            status.message = f'{job.environment_name}，准备上传 {len(files)} 个批次'
+            self._sync_status(job_id)
+            await process_tenant(config, tenant, files, status)
+            self._sync_status(job_id)
+            if job.status != 'terminated':
+                job.status = 'completed' if status.state in ('全部完成', '处理完成', '无文件') else 'failed'
+                if status.state == '全部完成':
+                    job.status = 'completed'
+                elif status.state == '处理完成':
+                    failed_count = sum(1 for item in status.batch_results if not item.get('ok'))
+                    job.status = 'failed' if failed_count else 'completed'
+                elif status.state in ('登录失败', '配置缺失', '上传失败', '外呼失败', '任务未创建'):
+                    job.status = 'failed'
+                job.updated_at = datetime.now().isoformat()
+        except asyncio.CancelledError:
+            job.status = 'terminated'
+            job.state = '已终止'
+            job.message = '用户手动终止'
+            job.updated_at = datetime.now().isoformat()
+            raise
+        except Exception as exc:
+            job.status = 'failed'
+            job.state = '执行异常'
+            job.message = str(exc)
+            job.error = {'code': 'OUTCALL_EXECUTION_FAILED', 'message': 'Outcall execution failed', 'detail': str(exc)}
+            job.updated_at = datetime.now().isoformat()
+
+    def _sync_status(self, job_id: str):
+        job = self.jobs.get(job_id)
+        status = self.statuses.get(job_id)
+        if not job or not status:
+            return
+        snapshot = status.to_dict()
+        job.state = snapshot.get('state') or status.state
+        job.message = status.message or snapshot.get('msg', '')
+        job.progress = snapshot.get('progress', '')
+        job.task_id = status.task_id
+        job.task_state = status.task_state
+        job.batch_results = list(status.batch_results)
+        job.updated_at = datetime.now().isoformat()
+
+    def _validate_environment(self, environment: str) -> str:
+        if environment not in BASE_URLS:
+            raise InvalidOutcallEnvironmentError(environment)
+        return environment
+
+    def _validate_mode(self, mode: str) -> str:
+        if mode not in ('test', 'formal'):
+            raise InvalidOutcallModeError(mode)
+        return mode
+
+    def _get_split_job(self, store_code: str, split_job_id: str):
+        split_job = self.split_service.get_job(split_job_id)
+        if not split_job:
+            split_job = self._recover_split_job_from_outputs(store_code, split_job_id)
+        if split_job.store_code != store_code:
+            raise SplitJobNotFoundError(f'{split_job_id} does not belong to {store_code}')
+        if split_job.status != 'completed':
+            raise SplitJobNotReadyError(split_job.status)
+        return split_job
+
+    def _recover_split_job_from_outputs(self, store_code: str, split_job_id: str):
+        store = self.split_service.get_store(store_code)
+        date_dir = self.split_service.split_root / datetime.now().strftime('%y%m%d')
+        store_dir = date_dir / store.store_name
+        scan_dir = store_dir if store_dir.exists() else date_dir
+        outputs = []
+        if scan_dir.exists():
+            for path in scan_dir.glob(f'{store.file_prefix}-*.xlsx'):
+                if path.is_file() and not path.name.startswith('~$'):
+                    outputs.append(self._output_from_file(path, store.file_prefix))
+        outputs.sort(key=self._output_sort_key)
+        if not outputs:
+            raise SplitJobNotFoundError(f'{split_job_id}; 未找到当天分割输出文件：{store_dir}')
+        source_path = self.split_service.split_root / f'{store.file_prefix}-模板.xlsx'
+        source_file = SplitSourceFile(
+            filename=source_path.name,
+            path=str(source_path),
+            size=source_path.stat().st_size if source_path.exists() else 0,
+            updated_at=datetime.fromtimestamp(source_path.stat().st_mtime).isoformat() if source_path.exists() else '',
+        )
+        return SplitJob(
+            job_id=split_job_id or f'recovered_{datetime.now().strftime("%Y%m%d")}_{store_code}',
+            status='completed',
+            store_code=store.store_code,
+            store_name=store.store_name,
+            source_file=source_file,
+            output_dir=str(scan_dir),
+            script_name=store.script_name,
+            outputs=outputs,
+            total_rows=sum(output.row_count for output in outputs),
+            valid_rows=sum(output.row_count for output in outputs),
+            invalid_rows=0,
+            created_at=datetime.now().isoformat(),
+        )
+
+    def _output_from_file(self, path: Path, file_prefix: str) -> SplitOutputFile:
+        stem = path.stem
+        batch_name = self._extract_batch_name(stem, file_prefix)
+        if batch_name == '测试':
+            batch_key = 'test'
+            display_name = '测试批次'
+        else:
+            batch_key = f'formal{batch_name}' if str(batch_name).isdigit() else f'formal_{batch_name}'
+            display_name = f'正式批次 {batch_name}'
+        return SplitOutputFile(
+            batch_key=batch_key,
+            batch_name=display_name,
+            filename=path.name,
+            path=str(path),
+            row_count=self._count_excel_rows(path),
+            columns=[],
+            preview_rows=[],
+        )
+
+    def _output_sort_key(self, output: SplitOutputFile):
+        if output.batch_key == 'test':
+            return (0, 0)
+        match = __import__('re').search(r'(\d+)$', output.batch_key)
+        return (1, int(match.group(1)) if match else 9999)
+
+    def _count_excel_rows(self, path: Path) -> int:
+        from openpyxl import load_workbook
+        wb = load_workbook(path, read_only=True)
+        try:
+            ws = wb.active
+            return sum(1 for row in ws.iter_rows(min_row=2, values_only=True) if any(cell is not None for cell in row))
+        finally:
+            wb.close()
+
+    def _load_tenant(self, store_name: str, environment: str):
+        venv_site_packages = self.source_root / '.venv' / 'Lib' / 'site-packages'
+        if venv_site_packages.exists() and str(venv_site_packages) not in sys.path:
+            sys.path.insert(0, str(venv_site_packages))
+        if str(self.source_root) not in sys.path:
+            sys.path.insert(0, str(self.source_root))
+        from src.config import ExcelFile, load_config
+        from src.tenant_processor import TenantStatus, process_tenant
+
+        config = load_config(str(self.config_path))
+        config.environment = environment
+        config.base_url = BASE_URLS[environment]
+        tenant = next((item for item in config.tenants if item.name == store_name), None)
+        if tenant is None:
+            raise OutcallTenantNotFoundError(store_name)
+        return tenant, config, ExcelFile, TenantStatus, process_tenant
+
+    def _select_files(self, split_job: Any, tenant_name: str, mode: str, excel_cls: Any):
+        if mode == 'test':
+            outputs = [output for output in split_job.outputs if output.batch_key == 'test']
+        else:
+            outputs = [output for output in split_job.outputs if output.batch_key != 'test']
+        if not outputs:
+            raise OutcallFileNotFoundError(mode)
+
+        files = []
+        for output in outputs:
+            path = Path(output.path)
+            if not path.exists() or not path.is_file():
+                raise OutcallFileNotFoundError(str(path))
+            batch_name = self._extract_batch_name(path.stem, tenant_name)
+            files.append((output, excel_cls(
+                file_path=path,
+                tenant_name=tenant_name,
+                batch_name=batch_name,
+                tenant_prefix=tenant_name,
+            )))
+        return files
+
+    def _extract_batch_name(self, stem: str, tenant_name: str) -> str:
+        prefix = f'{tenant_name}-'
+        if stem.startswith(prefix):
+            return stem[len(prefix):]
+        if '-' in stem:
+            return stem.split('-', 1)[1]
+        return stem
+
+
+def job_to_dict(job: OutcallJob) -> dict[str, Any]:
+    return asdict(job)
