@@ -994,7 +994,11 @@ def main():
                 for v in list(df_today[group_col].dropna()) + list(df_history[history_group_col].dropna())
                 if str(v).strip() and str(v).strip() != 'nan'
             })
-            groups = sorted(set(groups) | set(required_group_values) | set(monthly_stats_by_group.keys()))
+            groups = set(groups) | set(monthly_stats_by_group.keys())
+            if required_group_values:
+                groups = groups & set(required_group_values)
+                groups |= set(required_group_values)
+            groups = sorted(groups)
             print(f"\n按 {args.group_by_call_field} 分组统计: {', '.join(groups) if groups else '无'}")
             combined_summary_items = []
             grouped_artifact_names = []

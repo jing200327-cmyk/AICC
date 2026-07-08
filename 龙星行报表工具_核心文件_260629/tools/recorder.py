@@ -6,10 +6,25 @@ import urllib.request
 from datetime import datetime
 from pathlib import Path
 
+import pandas as pd
+
 ACCOUNTS = [
     {"name": "长沙", "username": "lxhchangsha1234", "password": "changsha123456"},
     {"name": "翔鹏", "username": "lxhxiangpeng1234", "password": "xp1123456"},
     {"name": "骏宜", "username": "lxhjunyi1234", "password": "jy123456"},
+    {
+        "name": "韶关",
+        "username": "lxhshaoguan123",
+        "password": "shaoguan1234",
+        "group_by_call_field": "机器人",
+        "required_group_values": ["龙星行-新车首呼-广东韶关"],
+        "group_display_names": {
+            "龙星行-新车首呼-广东韶关": "韶关",
+        },
+        "group_summary_names": {
+            "龙星行-新车首呼-广东韶关": "韶关",
+        },
+    },
     {
         "name": "广西龙星行",
         "username": "gxlxhnn123456",
@@ -76,6 +91,10 @@ CLUE_EXPORT_PATH = "/openapi-server/v2/call-clues/export-adviser-clue"
 CALL_EXPORT_PATH = "/esl/v2/task/export-task-list"
 CLIENT_ID = "110011"
 
+
+
+def refresh_clue_enabled() -> bool:
+    return (os.environ.get("REPORT_REFRESH_CLUE") or "").strip().lower() in {"1", "true", "yes", "y"}
 
 def report_datetime() -> datetime:
     raw = os.environ.get("REPORT_DATE")
@@ -176,12 +195,13 @@ def login(credentials: dict, timeout: int = 30) -> str:
     return token
 
 
-def export_clue(
+def _write_clue_export(
     credentials: dict,
     token: str,
     month_start: str,
     dest_path: Path,
     report_dt: datetime,
+    call_status: str = "",
     timeout: int = 60,
 ) -> Path:
     """导出线索明细（接口直接返回 Excel 文件流）"""
@@ -192,7 +212,7 @@ def export_clue(
         "phoneNumber": "",
         "seriesIds": [],
         "seriesName": "",
-        "callStatus": "",
+        "callStatus": call_status,
         "startTime": month_start,
         "endTime": end_of_today,
         "intentLevelArr": [],
@@ -223,6 +243,58 @@ def export_clue(
     dest_path.write_bytes(content)
     return dest_path
 
+
+def _read_clue_export(path: Path) -> pd.DataFrame:
+    return pd.read_excel(path, engine="openpyxl", dtype={"线索ID": str})
+
+
+def _merge_clue_exports(paths: list[Path], dest_path: Path) -> None:
+    frames = []
+    for path in paths:
+        try:
+            df = _read_clue_export(path)
+        except Exception as exc:
+            raise RuntimeError(f"线索明细导出文件读取失败 {path.name}: {exc}") from exc
+        if not df.empty:
+            frames.append(df)
+
+    if not frames:
+        raise RuntimeError("线索明细导出为空")
+
+    merged = pd.concat(frames, ignore_index=True)
+    if "线索ID" not in merged.columns:
+        raise RuntimeError("线索明细导出文件缺少线索ID列")
+
+    before = len(merged)
+    merged["线索ID"] = merged["线索ID"].astype(str).str.strip()
+    merged = merged.drop_duplicates(subset=["线索ID"], keep="first")
+    merged.to_excel(dest_path, index=False, engine="openpyxl")
+    print(f"  线索明细合并去重: {before} -> {len(merged)} 条")
+
+
+def export_clue(
+    credentials: dict,
+    token: str,
+    month_start: str,
+    dest_path: Path,
+    report_dt: datetime,
+    timeout: int = 60,
+) -> Path:
+    """导出线索明细，并补拉默认导出可能遗漏的待重呼线索。"""
+    base_path = dest_path.with_name(f"{dest_path.stem}__all{dest_path.suffix}")
+    retry_path = dest_path.with_name(f"{dest_path.stem}__待重呼{dest_path.suffix}")
+
+    _write_clue_export(credentials, token, month_start, base_path, report_dt, timeout=timeout)
+    _write_clue_export(credentials, token, month_start, retry_path, report_dt, call_status="待重呼", timeout=timeout)
+    _merge_clue_exports([base_path, retry_path], dest_path)
+
+    for temp_path in (base_path, retry_path):
+        try:
+            temp_path.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+    return dest_path
 
 def export_call(
     credentials: dict,
@@ -286,6 +358,7 @@ def crawl(output_dir: str | Path, accounts: list | None = None) -> dict[str, dic
     error_dir.mkdir(parents=True, exist_ok=True)
 
     result = {}
+    refresh_clue = refresh_clue_enabled()
 
     for acc in (accounts or ACCOUNTS):
         name = acc["name"]
@@ -294,7 +367,8 @@ def crawl(output_dir: str | Path, accounts: list | None = None) -> dict[str, dic
         clue_file = raw_dir / f"{name}-outcall-线索明细-{today}.xlsx"
         call_file = raw_dir / f"{name}-aicc-话单-{today}.xlsx"
 
-        if clue_file.exists() and call_file.exists():
+
+        if clue_file.exists() and call_file.exists() and not refresh_clue:
             print(f"  {name}: 原始数据已存在，跳过爬取")
             result[name] = {"clue": clue_file, "call": call_file}
             continue
@@ -309,7 +383,9 @@ def crawl(output_dir: str | Path, accounts: list | None = None) -> dict[str, dic
                 print(f"  {name}: 登录中...")
                 token = login(credentials)
 
-                if not clue_file.exists():
+                if refresh_clue or not clue_file.exists():
+                    if refresh_clue and clue_file.exists():
+                        print(f"  {name}: 用户选择重拉线索明细，成功后覆盖原文件")
                     print(f"  {name}: 导出线索明细...")
                     export_clue(credentials, token, month_start, clue_file, report_dt)
                     print(f"  {name}: 线索明细已保存 → {clue_file.name}")

@@ -783,6 +783,69 @@
       font-weight: 650;
     }
 
+
+    .report-text {
+      margin: 0;
+      padding: 14px;
+      white-space: pre-wrap;
+      word-break: break-word;
+      color: var(--text);
+      font-size: 13px;
+      line-height: 1.7;
+      background: #fff;
+      max-height: 360px;
+      overflow: auto;
+    }
+
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      background: rgba(15, 23, 42, 0.42);
+      z-index: 50;
+    }
+
+    .modal-backdrop.open {
+      display: flex;
+    }
+
+    .modal-panel {
+      width: min(520px, 100%);
+      border-radius: 8px;
+      background: #fff;
+      border: 1px solid var(--line);
+      box-shadow: 0 22px 55px rgba(15, 23, 42, 0.2);
+    }
+
+    .modal-head,
+    .modal-foot {
+      padding: 16px 18px;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .modal-head h3 {
+      margin: 0;
+      font-size: 17px;
+    }
+
+    .modal-body {
+      padding: 18px;
+      display: grid;
+      gap: 14px;
+    }
+
+    .modal-foot {
+      border-top: 1px solid var(--line);
+      border-bottom: 0;
+      justify-content: flex-end;
+    }
     .config-grid {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1116,7 +1179,7 @@
                     <label for="outcallEnvironment">外呼环境</label>
                     <select class="select" id="outcallEnvironment">
                       <option value="test">测试环境（uat.aidcc.cn）</option>
-                      <option value="prod">生产环境（service.aidcc.cn）</option>
+                      <option value="prod" selected>生产环境（service.aidcc.cn）</option>
                     </select>
                   </div>
                   <div class="notice">关键操作前必须人工确认。测试环境用于开发调试，生产环境会向对应门店平台发起真实外呼。</div>
@@ -1168,6 +1231,7 @@
             </div>
             <div class="toolbar">
               <button class="btn primary" id="generateDaily" type="button">生成今日龙星行日报</button>
+              <button class="btn" id="generateSpecificDaily" type="button">生成特定日期日报</button>
             </div>
           </div>
 
@@ -1209,17 +1273,13 @@
               <div class="panel-body">
                 <div class="report-blocks" id="reportBlocks">
                   <div class="report-section">
-                    <h3>长沙</h3>
-                    <dl><div><dt>新增线索</dt><dd>--</dd></div><div><dt>接通率</dt><dd>--</dd></div><div><dt>有效线索</dt><dd>--</dd></div><div><dt>TOP 未接通</dt><dd>--</dd></div></dl>
-                  </div>
-                  <div class="report-section">
-                    <h3>骏宜</h3>
-                    <dl><div><dt>新增线索</dt><dd>--</dd></div><div><dt>接通率</dt><dd>--</dd></div><div><dt>有效线索</dt><dd>--</dd></div><div><dt>TOP 未接通</dt><dd>--</dd></div></dl>
+                    <h3>等待生成</h3>
+                    <pre class="report-text">日报生成完成后，将按门店展示每日报告文本。</pre>
                   </div>
                 </div>
               </div>
             </div>
-          </div>
+            </div>
         </section>
 
         <section class="page" id="page-tasks">
@@ -1325,6 +1385,31 @@
     </main>
   </section>
 
+
+  <div class="modal-backdrop" id="dailyModal" aria-hidden="true">
+    <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="dailyModalTitle">
+      <div class="modal-head">
+        <h3 id="dailyModalTitle">生成特定日期日报</h3>
+        <button class="btn" id="dailyModalClose" type="button">关闭</button>
+      </div>
+      <div class="modal-body">
+        <div class="field">
+          <label for="dailyStoreSelect">门店</label>
+          <select class="select" id="dailyStoreSelect">
+            <option value="all">所有</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="dailyDateInput">日期</label>
+          <input id="dailyDateInput" type="date">
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn" id="dailyModalCancel" type="button">取消</button>
+        <button class="btn primary" id="dailyModalConfirm" type="button">确认生成</button>
+      </div>
+    </div>
+  </div>
   <script>
     const loginPage = document.getElementById('loginPage');
     const app = document.getElementById('app');
@@ -1360,6 +1445,10 @@
     const splitStoreNames = ['合肥马自达', '美诚林肯', '天翔林肯', '武汉骏马', '银马'];
     const splitApiBaseUrl = 'http://127.0.0.1:18765/api/leads/split';
     const outcallApiBaseUrl = 'http://127.0.0.1:18765/api/leads/outcall';
+    const dailyApiBaseUrl = 'http://127.0.0.1:18765/api/daily-report';
+    let dailyCurrentJobId = '';
+    let dailyPollTimer = null;
+    let dailyStoresLoaded = false;
     const splitStoreCodeMap = {
       '合肥马自达': 'hefei_mazda',
       '美诚林肯': 'meicheng_lincoln',
@@ -1397,7 +1486,7 @@
         selectedFile: '',
         filePathHint: '仅显示当前门店对应的 .xlsx 模板文件。',
         filesLoaded: false,
-        outcallEnvironment: 'test',
+        outcallEnvironment: 'prod',
         splitReaderText: defaultSplitReaderText,
         splitReaderMuted: true,
         callStatusClass: 'status gray',
@@ -1455,7 +1544,7 @@
       fileSelect.innerHTML = state.fileOptionsHtml;
       fileSelect.value = state.selectedFile;
       document.getElementById('splitFilePathHint').textContent = state.filePathHint;
-      document.getElementById('outcallEnvironment').value = state.outcallEnvironment || 'test';
+      document.getElementById('outcallEnvironment').value = state.outcallEnvironment || 'prod';
       const batchSelect = document.getElementById('splitBatchSelect');
       batchSelect.innerHTML = state.batchOptionsHtml;
       batchSelect.disabled = state.batchDisabled;
@@ -1942,9 +2031,11 @@
         document.getElementById('callStatusReader').textContent = renderOutcallJobStatus(body);
         pollOutcallJob(body.job_id, currentSplitStore);
       } catch (error) {
+        const errorText = error?.code === 'DUPLICATE_OUTCALL_FILE' ? (error.detail || error.message) : formatSplitError(error);
         document.getElementById('callStatusState').className = 'status danger';
         document.getElementById('callStatusState').textContent = '启动失败';
-        document.getElementById('callStatusReader').textContent = formatSplitError(error);
+        document.getElementById('callStatusReader').textContent = errorText;
+        if (error?.code === 'DUPLICATE_OUTCALL_FILE') alert(errorText);
       }
       saveCurrentSplitState();
     }
@@ -1954,31 +2045,198 @@
     document.getElementById('pushFormal').addEventListener('click', () => startOutcall('formal'));
     document.getElementById('refreshCallStatus').addEventListener('click', refreshCurrentCallStatus);
 
-    document.getElementById('generateDaily').addEventListener('click', () => {
-      if (!confirm('确认执行 E:\\\\ai\\\\workflow\\\\龙星行报表工具_核心文件_260629\\\\main.py 生成今日日报？')) return;
-      document.getElementById('dailyStatus').className = 'status info';
-      document.getElementById('dailyStatus').textContent = '执行中';
-      document.getElementById('dailyStep1').className = 'status ok';
-      document.getElementById('dailyStep1').textContent = 'done';
-      document.getElementById('dailyStep2').className = 'status ok';
-      document.getElementById('dailyStep2').textContent = 'done';
-      document.getElementById('dailyStep3').className = 'status ok';
-      document.getElementById('dailyStep3').textContent = 'done';
-      document.getElementById('dailyLog').textContent = [
-        '[09:30:02] task_runs created: daily_report_260706',
-        '[09:30:03] Step 1/2 crawl data -> data/260706/',
-        '[09:30:42] Step 2/2 process reports',
-        '[09:31:08] output: 每日报告/长沙_每日报告_260706.txt',
-        '[09:31:10] output: 汇总表/广州售后_日度月度汇总表_260706.xlsx'
+    function todayDateInputValue() {
+      const now = new Date();
+      const local = new Date(now.getTime() - now.getTimezoneOffset() * 60000);
+      return local.toISOString().slice(0, 10);
+    }
+
+    function dateInputToReportDate(value) {
+      if (!value) return '';
+      return `${value.slice(2, 4)}${value.slice(5, 7)}${value.slice(8, 10)}`;
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? '').replace(/[&<>"']/g, char => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;',
+      }[char]));
+    }
+
+    function setDailySteps(status) {
+      const states = {
+        running: ['info', 'running'],
+        completed: ['ok', 'done'],
+        failed: ['danger', 'failed'],
+      };
+      const [className, text] = states[status] || ['gray', 'pending'];
+      ['dailyStep1', 'dailyStep2', 'dailyStep3'].forEach(id => {
+        document.getElementById(id).className = `status ${className}`;
+        document.getElementById(id).textContent = text;
+      });
+    }
+
+    function dailyReportCard(report) {
+      return `<div class="report-section"><h3>${escapeHtml(report.name || report.filename)}</h3><pre class="report-text">${escapeHtml(report.content || '报告文件为空')}</pre></div>`;
+    }
+
+    function renderDailyJob(job) {
+      dailyCurrentJobId = job.job_id || dailyCurrentJobId;
+      const statusMap = {
+        running: ['status info', '执行中'],
+        completed: ['status ok', '已完成'],
+        failed: ['status danger', '失败'],
+      };
+      const [statusClass, statusText] = statusMap[job.status] || ['status gray', job.status || '未知'];
+      document.getElementById('dailyStatus').className = statusClass;
+      document.getElementById('dailyStatus').textContent = statusText;
+      setDailySteps(job.status);
+
+      const head = [
+        `任务：${job.job_id || '--'}`,
+        `门店：${job.store_name || '所有'}`,
+        `日期：${job.report_date || '--'}`,
+        `状态：${job.status || '--'}`,
       ].join('\n');
-      document.getElementById('reportBlocks').innerHTML = [
-        reportCard('长沙', '236', '68.4%', '42', '拒接'),
-        reportCard('骏宜', '188', '71.2%', '39', '暂时无法拨通'),
-        reportCard('翔鹏', '164', '63.9%', '31', '占线'),
-        reportCard('广州售后', '412', '66.8%', '77', '线路限制')
-      ].join('');
-      document.getElementById('dailyStatus').className = 'status ok';
-      document.getElementById('dailyStatus').textContent = '已完成';
+      const errorText = job.error?.detail ? `\n\n错误：${job.error.detail}` : '';
+      document.getElementById('dailyLog').textContent = `${head}\n\n${job.log || '等待脚本输出...'}${errorText}`;
+
+      if (job.reports?.length) {
+        document.getElementById('reportBlocks').innerHTML = job.reports.map(dailyReportCard).join('');
+      } else if (job.status === 'running') {
+        document.getElementById('reportBlocks').innerHTML = '<div class="report-section"><h3>生成中</h3><pre class="report-text">正在执行 main.py，完成后将展示每日报告文本。</pre></div>';
+      } else if (job.status === 'failed') {
+        document.getElementById('reportBlocks').innerHTML = '<div class="report-section"><h3>生成失败</h3><pre class="report-text">请查看左侧执行日志。</pre></div>';
+      }
+    }
+
+    async function pollDailyJob(jobId) {
+      if (dailyPollTimer) clearTimeout(dailyPollTimer);
+      try {
+        const response = await fetch(`${dailyApiBaseUrl}/jobs/${jobId}`);
+        const body = await parseApiResponse(response);
+        if (!response.ok) throw body.error || body;
+        renderDailyJob(body);
+        if (body.status === 'running') {
+          dailyPollTimer = setTimeout(() => pollDailyJob(jobId), 3000);
+        }
+      } catch (error) {
+        document.getElementById('dailyStatus').className = 'status danger';
+        document.getElementById('dailyStatus').textContent = '读取失败';
+        document.getElementById('dailyLog').textContent = formatSplitError(error);
+      }
+    }
+
+    async function checkDailyRawFiles({ reportDate = '', store = 'all' } = {}) {
+      const params = new URLSearchParams();
+      if (reportDate) params.set('report_date', reportDate);
+      params.set('store', store || 'all');
+      const response = await fetch(`${dailyApiBaseUrl}/raw-files?${params.toString()}`);
+      const body = await parseApiResponse(response);
+      if (!response.ok) throw body.error || body;
+      return body;
+    }
+
+    async function confirmDailyRefreshClue({ reportDate = '', store = 'all', storeText = '所有' } = {}) {
+      const status = await checkDailyRawFiles({ reportDate, store });
+      if (!status.has_existing_clue) return false;
+      const names = (status.items || [])
+        .filter(item => item.clue_exists)
+        .map(item => item.store)
+        .join('、') || storeText;
+      return confirm(`【${names}】${status.report_date} 原始文件已有线索明细，是否重拉线索明细？\n\n选择“确定”：重新下载并覆盖原线索明细。\n选择“取消”：跳过下载，使用已有原始文件。`);
+    }
+
+    async function startDailyReport({ reportDate = '', store = 'all', refreshClue = false } = {}) {
+      document.getElementById('dailyStatus').className = 'status info';
+      document.getElementById('dailyStatus').textContent = '启动中';
+      setDailySteps('running');
+      document.getElementById('dailyLog').textContent = refreshClue ? '正在提交日报任务，将重拉线索明细...' : '正在提交日报任务...';
+      document.getElementById('reportBlocks').innerHTML = '<div class="report-section"><h3>等待输出</h3><pre class="report-text">任务已提交，正在等待 main.py 输出。</pre></div>';
+      try {
+        const response = await fetch(`${dailyApiBaseUrl}/jobs`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ report_date: reportDate, store, refresh_clue: refreshClue }),
+        });
+        const body = await parseApiResponse(response);
+        if (!response.ok) throw body.error || body;
+        renderDailyJob(body);
+        pollDailyJob(body.job_id);
+      } catch (error) {
+        document.getElementById('dailyStatus').className = 'status danger';
+        document.getElementById('dailyStatus').textContent = '启动失败';
+        document.getElementById('dailyLog').textContent = formatSplitError(error);
+        setDailySteps('failed');
+      }
+    }
+    async function loadDailyStores() {
+      if (dailyStoresLoaded) return;
+      const select = document.getElementById('dailyStoreSelect');
+      try {
+        const response = await fetch(`${dailyApiBaseUrl}/stores`);
+        const body = await parseApiResponse(response);
+        if (!response.ok) throw body.error || body;
+        select.innerHTML = body.stores.map(store => `<option value="${escapeHtml(store.code)}">${escapeHtml(store.name)}</option>`).join('');
+        dailyStoresLoaded = true;
+      } catch (error) {
+        select.innerHTML = '<option value="all">所有</option>';
+        document.getElementById('dailyLog').textContent = formatSplitError(error);
+      }
+    }
+
+    function openDailyModal() {
+      document.getElementById('dailyDateInput').value = todayDateInputValue();
+      document.getElementById('dailyModal').classList.add('open');
+      document.getElementById('dailyModal').setAttribute('aria-hidden', 'false');
+      loadDailyStores();
+    }
+
+    function closeDailyModal() {
+      document.getElementById('dailyModal').classList.remove('open');
+      document.getElementById('dailyModal').setAttribute('aria-hidden', 'true');
+    }
+
+    document.getElementById('generateDaily').addEventListener('click', async () => {
+      if (!confirm('确认执行 E:\\ai\\workflow\\AICC\\龙星行报表工具_核心文件_260629\\main.py 生成今日日报？')) return;
+      try {
+        const refreshClue = await confirmDailyRefreshClue({ store: 'all', storeText: '所有' });
+        startDailyReport({ store: 'all', refreshClue });
+      } catch (error) {
+        document.getElementById('dailyStatus').className = 'status danger';
+        document.getElementById('dailyStatus').textContent = '检查失败';
+        document.getElementById('dailyLog').textContent = formatSplitError(error);
+      }
+    });
+
+    document.getElementById('generateSpecificDaily').addEventListener('click', openDailyModal);
+    document.getElementById('dailyModalClose').addEventListener('click', closeDailyModal);
+    document.getElementById('dailyModalCancel').addEventListener('click', closeDailyModal);
+    document.getElementById('dailyModal').addEventListener('click', event => {
+      if (event.target.id === 'dailyModal') closeDailyModal();
+    });
+    document.getElementById('dailyModalConfirm').addEventListener('click', async () => {
+      const store = document.getElementById('dailyStoreSelect').value || 'all';
+      const reportDate = dateInputToReportDate(document.getElementById('dailyDateInput').value);
+      if (!reportDate) {
+        alert('请选择日报日期');
+        return;
+      }
+      const storeText = document.getElementById('dailyStoreSelect').selectedOptions[0]?.textContent || '所有';
+      if (!confirm(`确认生成【${storeText}】${reportDate} 日报？`)) return;
+      try {
+        const refreshClue = await confirmDailyRefreshClue({ reportDate, store, storeText });
+        closeDailyModal();
+        startDailyReport({ reportDate, store, refreshClue });
+      } catch (error) {
+        closeDailyModal();
+        document.getElementById('dailyStatus').className = 'status danger';
+        document.getElementById('dailyStatus').textContent = '检查失败';
+        document.getElementById('dailyLog').textContent = formatSplitError(error);
+      }
     });
 
     function reportCard(name, total, rate, valid, top) {

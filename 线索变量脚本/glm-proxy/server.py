@@ -25,6 +25,9 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 
+from daily_report.api import create_router as create_daily_report_router
+from daily_report.service import DailyReportService
+
 from lead_import.api import create_router
 from lead_import.registry import StoreScriptRegistry
 from lead_import.service import LeadImportService
@@ -102,6 +105,12 @@ OUTCALL_CONFIG_PATH = os.environ.get(
 )
 outcall_service = OutcallService(OUTCALL_CONFIG_PATH, OUTCALL_PROJECT_ROOT, split_import_service)
 app.include_router(create_outcall_router(outcall_service))
+DAILY_REPORT_PROJECT_ROOT = os.environ.get(
+    "DAILY_REPORT_PROJECT_ROOT",
+    os.path.join(AICC_ROOT, "龙星行报表工具_核心文件_260629"),
+)
+daily_report_service = DailyReportService(DAILY_REPORT_PROJECT_ROOT)
+app.include_router(create_daily_report_router(daily_report_service))
 
 
 @app.get("/health")

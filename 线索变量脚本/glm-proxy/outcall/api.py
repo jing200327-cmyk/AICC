@@ -4,6 +4,7 @@ from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
 from .service import (
+    DuplicateOutcallFileError,
     InvalidOutcallEnvironmentError,
     InvalidOutcallModeError,
     OutcallError,
@@ -44,6 +45,8 @@ def create_router(service: OutcallService) -> APIRouter:
             return error_response(exc.code, exc.message, exc.detail, 422)
         except SplitJobNotFoundError as exc:
             return error_response(exc.code, exc.message, exc.detail, 404)
+        except DuplicateOutcallFileError as exc:
+            return error_response(exc.code, exc.detail or exc.message, exc.detail, 409)
         except (SplitJobNotReadyError, OutcallTenantNotFoundError, OutcallFileNotFoundError) as exc:
             return error_response(exc.code, exc.message, exc.detail, 422)
         except OutcallError as exc:

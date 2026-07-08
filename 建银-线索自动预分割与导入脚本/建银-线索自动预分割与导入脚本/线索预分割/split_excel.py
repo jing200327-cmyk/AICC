@@ -30,6 +30,30 @@ TEST_FILE_ROWS = 5
 
 # ========================== 函数定义 ==========================
 
+PHONE_PATTERN = re.compile(r"1\d{10}|0\d{2,3}-?\d{7,8}|0\d{9,11}")
+MULTI_PHONE_SEPARATOR_PATTERN = re.compile(r"[,，、;；/\\|\r\n\t]+")
+
+
+def extract_first_phone(phone_str):
+    phone_text = (
+        phone_str
+        .replace("－", "-")
+        .replace("—", "-")
+        .replace("–", "-")
+    )
+    compact_text = re.sub(r"[\s\u3000]+", "", phone_text)
+
+    match = PHONE_PATTERN.search(compact_text)
+    if match:
+        return match.group(0)
+
+    for part in MULTI_PHONE_SEPARATOR_PATTERN.split(phone_text):
+        part = re.sub(r"[\s\u3000]+", "", part)
+        if part:
+            return part
+
+    return compact_text
+
 def normalize_phone(phone):
     if pd.isna(phone):
         return ""
@@ -38,14 +62,7 @@ def normalize_phone(phone):
     if not phone_str:
         return ""
 
-    phone_str = (
-        phone_str
-        .replace(" ", "")
-        .replace("\u3000", "")
-        .replace("－", "-")
-        .replace("—", "-")
-        .replace("–", "-")
-    )
+    phone_str = extract_first_phone(phone_str)
 
     numeric_text = phone_str.replace(",", "")
     if re.fullmatch(r"[+-]?\d+(\.\d+)?([eE][+-]?\d+)?", numeric_text) and not re.fullmatch(r"[+-]?0\d+", numeric_text):

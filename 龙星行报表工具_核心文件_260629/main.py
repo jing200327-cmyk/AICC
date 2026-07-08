@@ -124,6 +124,18 @@ def process_account(acc: dict, files: dict[str, Path], today: str, out_dir: Path
     return wrote_report
 
 
+
+def select_accounts() -> list[dict]:
+    store = (os.environ.get("REPORT_STORE") or "all").strip()
+    if not store or store.lower() == "all" or store == "所有":
+        return ACCOUNTS
+
+    selected = [acc for acc in ACCOUNTS if acc.get("name") == store]
+    if not selected:
+        available = "、".join(acc.get("name", "") for acc in ACCOUNTS)
+        raise ValueError(f"REPORT_STORE={store} 未在 ACCOUNTS 中配置，可选门店：{available}")
+    return selected
+
 def retry_changsha_if_needed(files: dict, today: str, out_dir: Path, report_dir: Path) -> None:
     changsha = next((acc for acc in ACCOUNTS if acc["name"] == "长沙"), None)
     if changsha is None:
@@ -159,12 +171,13 @@ def retry_changsha_if_needed(files: dict, today: str, out_dir: Path, report_dir:
 def main():
     today = os.environ.get("REPORT_DATE") or datetime.now().strftime("%y%m%d")
     out_dir = BASE_DIR.joinpath("data", today)
+    accounts = select_accounts()
 
     # === Step 1: 爬取数据 ===
     print("=" * 60)
     print(f"Step 1/2: 爬取数据 → {out_dir}/")
     print("=" * 60)
-    files = crawl(out_dir)
+    files = crawl(out_dir, accounts=accounts)
     for name, f in files.items():
         print(f"  {name}: clue={f['clue'].name}, call={f['call'].name}")
 
@@ -176,11 +189,12 @@ def main():
     report_dir = out_dir.joinpath("每日报告")
     report_dir.mkdir(parents=True, exist_ok=True)
 
-    for acc in ACCOUNTS:
+    for acc in accounts:
         name = acc["name"]
         process_account(acc, files.get(name), today, out_dir, report_dir)
 
-    retry_changsha_if_needed(files, today, out_dir, report_dir)
+    if any(acc.get("name") == "长沙" for acc in accounts):
+        retry_changsha_if_needed(files, today, out_dir, report_dir)
 
 
 if __name__ == "__main__":

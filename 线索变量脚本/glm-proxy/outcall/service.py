@@ -57,6 +57,11 @@ class OutcallFileNotFoundError(OutcallError):
     message = 'No split output file is available for this outcall mode'
 
 
+class DuplicateOutcallFileError(OutcallError):
+    code = 'DUPLICATE_OUTCALL_FILE'
+    message = 'Duplicate outcall file is already queued'
+
+
 class OutcallService:
     def __init__(self, config_path: Path, source_root: Path, split_service: SplitImportService):
         self.config_path = Path(config_path)
@@ -65,6 +70,7 @@ class OutcallService:
         self.jobs: dict[str, OutcallJob] = {}
         self.statuses: dict[str, Any] = {}
         self.tasks: dict[str, asyncio.Task] = {}
+        self.file_signatures: dict[str, dict[str, tuple[tuple[str, ...], ...]]] = {}
 
     def start_job(self, store_code: str, environment: str, mode: str, split_job_id: str) -> OutcallJob:
         environment = self._validate_environment(environment)
@@ -72,6 +78,9 @@ class OutcallService:
         split_job = self._get_split_job(store_code, split_job_id)
         tenant, config, excel_cls, status_cls, process_tenant = self._load_tenant(split_job.store_name, environment)
         files = self._select_files(split_job, tenant.name, mode, excel_cls)
+        file_signatures = {file.file_path.name: self._first_rows_signature(file.file_path) for _, file in files}
+        if environment == 'prod':
+            self._assert_no_duplicate_outcall_files(tenant.name, files, file_signatures)
 
         now = datetime.now().isoformat()
         job = OutcallJob(
@@ -97,6 +106,7 @@ class OutcallService:
         status = status_cls(tenant.name)
         self.jobs[job.job_id] = job
         self.statuses[job.job_id] = status
+        self.file_signatures[job.job_id] = file_signatures
         self.tasks[job.job_id] = asyncio.create_task(
             self._run_job(job.job_id, config, tenant, [file for _, file in files], status, process_tenant)
         )
@@ -294,6 +304,65 @@ class OutcallService:
                 tenant_prefix=tenant_name,
             )))
         return files
+
+    def _assert_no_duplicate_outcall_files(
+        self,
+        tenant_name: str,
+        files: list[tuple[Any, Any]],
+        file_signatures: dict[str, tuple[tuple[str, ...], ...]],
+    ):
+        for job_id, job in list(self.jobs.items()):
+            self._sync_status(job_id)
+            if job.environment != 'prod' or job.store_name != tenant_name or job.status == 'terminated':
+                continue
+
+            existing_files = {item.filename for item in job.files}
+            if not existing_files:
+                continue
+
+            existing_signatures = self.file_signatures.get(job_id)
+            if existing_signatures is None:
+                existing_signatures = self._job_file_signatures(job)
+                self.file_signatures[job_id] = existing_signatures
+
+            for _, file in files:
+                filename = file.file_path.name
+                if filename not in existing_files:
+                    continue
+                if existing_signatures.get(filename) == file_signatures.get(filename):
+                    raise DuplicateOutcallFileError(f'{filename}文件已被外呼禁止重复推出')
+
+    def _job_file_signatures(self, job: OutcallJob) -> dict[str, tuple[tuple[str, ...], ...]]:
+        signatures = {}
+        for file in job.files:
+            path = Path(file.path)
+            if path.exists() and path.is_file():
+                signatures[file.filename] = self._first_rows_signature(path)
+        return signatures
+
+    def _first_rows_signature(self, path: Path, limit: int = 5) -> tuple[tuple[str, ...], ...]:
+        from openpyxl import load_workbook
+
+        wb = load_workbook(path, read_only=True, data_only=True)
+        try:
+            ws = wb.active
+            rows = []
+            for row in ws.iter_rows(min_row=2, values_only=True):
+                if not any(cell is not None for cell in row):
+                    continue
+                rows.append(tuple(self._cell_signature(cell) for cell in row))
+                if len(rows) >= limit:
+                    break
+            return tuple(rows)
+        finally:
+            wb.close()
+
+    def _cell_signature(self, value: Any) -> str:
+        if value is None:
+            return ''
+        if isinstance(value, datetime):
+            return value.isoformat()
+        return str(value).strip()
 
     def _extract_batch_name(self, stem: str, tenant_name: str) -> str:
         prefix = f'{tenant_name}-'
