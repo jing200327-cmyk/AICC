@@ -63,6 +63,9 @@ class SplitImportService:
     def list_stores(self) -> list[SplitStore]:
         return list(self.stores.values())
 
+    def upsert_store(self, store: SplitStore) -> None:
+        self.stores[store.store_code] = store
+
     def get_store(self, store_code: str) -> SplitStore:
         try:
             return self.stores[store_code]

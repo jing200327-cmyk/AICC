@@ -23,8 +23,10 @@ from typing import Optional
 import httpx
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 
+from config_center.api import create_router as create_config_center_router
+from config_center.service import ConfigCenterService
 from daily_report.api import create_router as create_daily_report_router
 from daily_report.service import DailyReportService
 
@@ -35,6 +37,8 @@ from outcall.api import create_router as create_outcall_router
 from outcall.service import OutcallService
 from split_import.api import create_router as create_split_router
 from split_import.service import SplitImportService
+from task_records.api import create_router as create_task_records_router
+from task_records.service import TaskRecordService
 
 # ─── Config ───────────────────────────────────────────────────────────
 API_KEY = os.environ.get("GLM_PROXY_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN")
@@ -111,6 +115,17 @@ DAILY_REPORT_PROJECT_ROOT = os.environ.get(
 )
 daily_report_service = DailyReportService(DAILY_REPORT_PROJECT_ROOT)
 app.include_router(create_daily_report_router(daily_report_service))
+
+task_record_service = TaskRecordService(lead_import_service, split_import_service, outcall_service, daily_report_service)
+app.include_router(create_task_records_router(task_record_service))
+
+config_center_service = ConfigCenterService(lead_import_service, split_import_service, OUTCALL_CONFIG_PATH, DAILY_REPORT_PROJECT_ROOT)
+app.include_router(create_config_center_router(config_center_service))
+
+
+@app.get("/aicc-frontend-demo.html")
+async def aicc_frontend_demo():
+    return FileResponse(os.path.join(AICC_ROOT, "aicc-frontend-demo.html"), media_type="text/html")
 
 
 @app.get("/health")

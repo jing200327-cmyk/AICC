@@ -29,6 +29,9 @@ class StoreScriptRegistry:
     def list_stores(self) -> list[StoreScript]:
         return list(self._stores.values())
 
+    def upsert(self, store: StoreScript) -> None:
+        self._stores[store.store_code] = store
+
     def get(self, store_code: str) -> StoreScript:
         return self._stores[store_code]
 

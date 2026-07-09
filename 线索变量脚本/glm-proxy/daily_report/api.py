@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 from fastapi import APIRouter
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 
 from .service import (
     DailyReportError,
     DailyReportService,
     InvalidReportDateError,
     InvalidReportStoreError,
+    InvalidReportGroupError,
     job_to_dict,
 )
 
@@ -22,6 +23,35 @@ def create_router(service: DailyReportService) -> APIRouter:
     @router.get('/stores')
     async def list_stores():
         return {'stores': service.list_stores()}
+
+    @router.get('/preview')
+    async def preview(report_date: str = '', store: str = 'all'):
+        try:
+            return service.get_preview(
+                report_date=str(report_date or '').strip() or None,
+                store=str(store or 'all').strip() or 'all',
+            )
+        except (InvalidReportDateError, InvalidReportStoreError) as exc:
+            return error_response(exc.code, exc.message, exc.detail, 422)
+        except DailyReportError as exc:
+            return error_response(exc.code, exc.message, exc.detail, 400)
+
+    @router.get('/summary-image')
+    async def summary_image(report_date: str = '', group: str = ''):
+        try:
+            image_bytes, filename = service.get_summary_image(
+                report_date=str(report_date or '').strip() or None,
+                group=str(group or '').strip(),
+            )
+            return Response(
+                content=image_bytes,
+                media_type='image/png',
+                headers={'Content-Disposition': f'inline; filename="{filename}"'},
+            )
+        except (InvalidReportDateError, InvalidReportStoreError, InvalidReportGroupError) as exc:
+            return error_response(exc.code, exc.message, exc.detail, 422)
+        except DailyReportError as exc:
+            return error_response(exc.code, exc.message, exc.detail, 400)
 
     @router.get('/raw-files')
     async def raw_files(report_date: str = '', store: str = 'all'):

@@ -251,7 +251,9 @@
 
     .app {
       display: none;
+      height: 100vh;
       min-height: 100vh;
+      overflow: hidden;
     }
 
     .sidebar {
@@ -261,7 +263,11 @@
       color: #cbd5e1;
       display: flex;
       flex-direction: column;
+      height: 100vh;
       min-height: 100vh;
+      overflow-y: auto;
+      position: sticky;
+      top: 0;
     }
 
     .side-head {
@@ -360,9 +366,12 @@
       flex: 1;
       display: flex;
       flex-direction: column;
+      height: 100vh;
+      overflow: hidden;
     }
 
     .topbar {
+      flex: 0 0 64px;
       height: 64px;
       background: #fff;
       border-bottom: 1px solid var(--line);
@@ -408,6 +417,8 @@
     }
 
     .content {
+      flex: 1;
+      min-height: 0;
       padding: 22px;
       overflow: auto;
     }
@@ -743,10 +754,24 @@
       background: var(--brand);
     }
 
+    .daily-workbench {
+      display: grid;
+      gap: 16px;
+    }
+
+    .daily-task-panel,
+    .daily-preview-panel {
+      width: 100%;
+    }
+
+    .daily-task-panel .steps {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      margin-top: 0;
+    }
+
     .report-blocks {
       display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 14px;
+      gap: 16px;
     }
 
     .report-section {
@@ -756,12 +781,71 @@
       overflow: hidden;
     }
 
-    .report-section h3 {
-      margin: 0;
+    .report-group {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: #fff;
+      overflow: hidden;
+    }
+
+    .report-group-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
       padding: 12px 14px;
-      font-size: 15px;
       border-bottom: 1px solid var(--line);
       background: var(--panel-soft);
+    }
+
+    .report-group-head h3,
+    .report-section h3 {
+      margin: 0;
+      font-size: 15px;
+    }
+
+    .report-pair {
+      display: grid;
+      grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
+      gap: 12px;
+      padding: 12px;
+      align-items: start;
+    }
+
+    .report-stack {
+      display: grid;
+      gap: 12px;
+    }
+
+    .report-subsection {
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+      overflow: hidden;
+    }
+
+    .report-subsection-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--line);
+      background: #fbfdff;
+    }
+
+    .report-subsection-head h4 {
+      margin: 0;
+      font-size: 13px;
+      font-weight: 650;
+      color: #1f2937;
+    }
+
+    .copy-btn {
+      min-height: 26px;
+      padding: 3px 9px;
+      border-radius: 6px;
+      font-size: 12px;
     }
 
     .report-section dl {
@@ -783,20 +867,52 @@
       font-weight: 650;
     }
 
-
     .report-text {
       margin: 0;
-      padding: 14px;
+      padding: 12px;
       white-space: pre-wrap;
       word-break: break-word;
       color: var(--text);
       font-size: 13px;
       line-height: 1.7;
       background: #fff;
-      max-height: 360px;
-      overflow: auto;
+      overflow: visible;
     }
 
+    .summary-table-wrap {
+      padding: 0;
+      overflow-x: auto;
+      overflow-y: visible;
+    }
+
+    .summary-table {
+      min-width: 0;
+      width: 100%;
+      table-layout: auto;
+    }
+
+    .excel-summary-table {
+      margin: 0;
+      background: #fff;
+    }
+
+    .summary-table th,
+    .summary-table td {
+      padding: 8px 9px;
+      font-size: 12px;
+      line-height: 1.45;
+      vertical-align: top;
+      white-space: normal;
+      word-break: break-word;
+    }
+
+    .report-empty {
+      padding: 18px 12px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.6;
+      background: #fff;
+    }
     .modal-backdrop {
       position: fixed;
       inset: 0;
@@ -852,6 +968,60 @@
       gap: 16px;
     }
 
+    .config-card {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      overflow: hidden;
+    }
+
+    .config-card + .config-card {
+      margin-top: 16px;
+    }
+
+    .config-card-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--line);
+      background: #fbfdff;
+    }
+
+    .config-card-head h3 {
+      margin: 0;
+      font-size: 15px;
+    }
+
+    .config-card-body {
+      padding: 16px;
+      display: grid;
+      gap: 14px;
+    }
+
+    .field.full {
+      grid-column: 1 / -1;
+    }
+
+    textarea.input {
+      min-height: 82px;
+      resize: vertical;
+      line-height: 1.55;
+    }
+
+    .config-status-line {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .robot-extra {
+      display: grid;
+      gap: 14px;
+    }
     .form-grid {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -920,6 +1090,9 @@
       .app {
         display: none;
         flex-direction: column;
+        height: auto;
+        min-height: 100vh;
+        overflow: visible;
       }
 
       .app.is-auth {
@@ -929,7 +1102,10 @@
       .sidebar {
         width: 100%;
         flex-basis: auto;
+        height: auto;
         min-height: auto;
+        overflow-y: visible;
+        position: static;
       }
 
       .menu {
@@ -948,8 +1124,15 @@
         display: none;
       }
 
+      .main {
+        height: auto;
+        overflow: visible;
+      }
+
       .content {
+        min-height: auto;
         padding: 16px;
+        overflow: visible;
       }
 
       .page-title {
@@ -1019,7 +1202,7 @@
         <button class="nav active" data-page="lead"><span>⬆</span>线索导入</button>
         <button class="nav" data-page="split"><span>▦</span>线索预分割&自动外呼</button>
         <div class="submenu" aria-label="线索预分割自动外呼门店">
-          <button class="active-store" data-store="合肥马自达">合肥马自达</button>
+          <button data-store="合肥马自达">合肥马自达</button>
           <button data-store="美诚林肯">美诚林肯</button>
           <button data-store="天翔林肯">天翔林肯</button>
           <button data-store="武汉骏马">武汉骏马</button>
@@ -1235,8 +1418,8 @@
             </div>
           </div>
 
-          <div class="grid two">
-            <div class="panel">
+          <div class="daily-workbench">
+            <div class="panel daily-task-panel">
               <div class="panel-head">
                 <h2>日报任务</h2>
                 <span class="status info" id="dailyStatus">可执行</span>
@@ -1265,17 +1448,14 @@
               </div>
             </div>
 
-            <div class="panel">
+            <div class="panel daily-preview-panel">
               <div class="panel-head">
                 <h2>日报分区预览</h2>
-                <button class="btn">下载汇总表</button>
+                <button class="btn" id="refreshDailyPreview" type="button">刷新预览</button>
               </div>
               <div class="panel-body">
                 <div class="report-blocks" id="reportBlocks">
-                  <div class="report-section">
-                    <h3>等待生成</h3>
-                    <pre class="report-text">日报生成完成后，将按门店展示每日报告文本。</pre>
-                  </div>
+                  <div class="report-empty">正在读取最新日报与汇总表预览。</div>
                 </div>
               </div>
             </div>
@@ -1286,18 +1466,27 @@
           <div class="page-title">
             <div>
               <h1>任务记录</h1>
-              <p>统一展示 task_runs 表中的任务类型、状态、输入输出文件、日志与错误信息。</p>
+              <p>统一展示线索导入、线索预分割、自动外呼和龙星行日报任务的完成时间与结果文件。</p>
             </div>
             <div class="toolbar">
-              <select class="select" style="width:150px;"><option>全部状态</option><option>执行中</option><option>完成</option><option>失败</option></select>
-              <button class="btn">导出记录</button>
+              <select class="select" id="taskTypeFilter" style="width:170px;">
+                <option value="all">全部任务类型</option>
+                <option value="lead_import">线索导入</option>
+                <option value="split_preview">线索预分割</option>
+                <option value="outcall_test">测试线索外呼</option>
+                <option value="outcall_formal">正式线索外呼</option>
+                <option value="daily_report">龙星行日报</option>
+              </select>
+              <select class="select" id="taskDatePreset" style="width:150px;"></select>
+              <input class="input" id="taskCustomDate" type="date" style="width:150px; display:none;">
+              <button class="btn primary" id="refreshTaskRecords" type="button">刷新</button>
             </div>
           </div>
 
           <div class="panel">
             <div class="panel-head">
               <h2>最近任务</h2>
-              <span class="status info">轮询间隔 3s</span>
+              <span class="status info" id="taskRecordStatus">待刷新</span>
             </div>
             <div class="table-wrap">
               <table>
@@ -1306,82 +1495,147 @@
                     <th>任务类型</th><th>任务名称</th><th>执行人</th><th>状态</th><th>输入文件</th><th>输出文件</th><th>创建时间</th><th>完成时间</th><th>操作</th>
                   </tr>
                 </thead>
-                <tbody>
-                  <tr>
-                    <td>线索导入</td><td>合肥马自达 260706 导入</td><td>运营专员</td><td><span class="status ok">完成</span></td><td>合肥马自达-线索.xlsx</td><td>job_260706.txt</td><td>09:12:18</td><td>09:12:25</td><td><button class="btn">详情</button></td>
-                  </tr>
-                  <tr>
-                    <td>预外呼</td><td>银马 测试批次</td><td>运营专员</td><td><span class="status info">执行中</span></td><td>银马-模板.xlsx</td><td>银马-测试.xlsx</td><td>10:03:41</td><td>--</td><td><button class="btn">日志</button></td>
-                  </tr>
-                  <tr>
-                    <td>龙星行日报</td><td>260706 日报生成</td><td>系统</td><td><span class="status fail">失败</span></td><td>main.py</td><td>--</td><td>08:00:00</td><td>08:02:44</td><td><button class="btn">错误</button></td>
-                  </tr>
+                <tbody id="taskRecordRows">
+                  <tr><td colspan="9">点击刷新获取任务记录。</td></tr>
                 </tbody>
               </table>
             </div>
           </div>
         </section>
-
         <section class="page" id="page-config">
           <div class="page-title">
             <div>
               <h1>配置中心</h1>
-              <p>维护门店、机器人、脚本路径与分割规则，后续由后端 API 持久化到 SQLite。</p>
+              <p>新增或更新线索导入脚本、预分割门店、自动外呼租户和龙星行日报账号。</p>
             </div>
-            <div class="toolbar"><button class="btn primary">保存配置</button></div>
+            <div class="toolbar"><button class="btn" id="refreshConfigSummary" type="button">刷新配置</button></div>
           </div>
 
           <div class="panel">
             <div class="panel-body">
               <div class="tabs" role="tablist">
-                <button class="tab active" data-tab="store">门店配置</button>
-                <button class="tab" data-tab="robot">机器人配置</button>
-                <button class="tab" data-tab="script">脚本配置</button>
-                <button class="tab" data-tab="rule">分割规则</button>
+                <button class="tab active" data-tab="lead-config">导入线索脚本配置</button>
+                <button class="tab" data-tab="split-config">线索预分割新增门店配置</button>
+                <button class="tab" data-tab="outcall-config">自动外呼新增门店配置</button>
+                <button class="tab" data-tab="daily-config">龙星行日报新增门店&机器人配置</button>
               </div>
 
-              <div class="tab-panel active" id="tab-store">
-                <div class="config-grid">
-                  <div class="field"><label>门店名称</label><input class="input" value="合肥马自达"></div>
-                  <div class="field"><label>城市</label><input class="input" value="合肥"></div>
-                  <div class="field"><label>品牌</label><input class="input" value="马自达"></div>
-                  <div class="field"><label>输出目录</label><input class="input" value="storage/outputs/lead-import/hefei_mazda"></div>
-                  <div class="field"><label>状态</label><select class="select"><option>启用</option><option>停用</option></select></div>
-                </div>
+              <div class="tab-panel active" id="tab-lead-config">
+                <form class="config-card" id="leadScriptConfigForm">
+                  <div class="config-card-head">
+                    <h3>导入线索脚本配置</h3>
+                    <span class="status gray" id="configLeadStatus">未提交</span>
+                  </div>
+                  <div class="config-card-body">
+                    <div class="config-grid">
+                      <div class="field">
+                        <label for="configLeadAction">功能类型</label>
+                        <select class="select" id="configLeadAction" name="action_type">
+                          <option value="create">新增脚本</option>
+                          <option value="update">脚本更新</option>
+                        </select>
+                      </div>
+                      <div class="field">
+                        <label for="configLeadStoreName">门店名称</label>
+                        <input class="input" id="configLeadStoreName" name="store_name" placeholder="例如：合肥奥体马自达">
+                      </div>
+                      <div class="field full">
+                        <label for="configLeadScriptFile">上传新门店脚本</label>
+                        <input id="configLeadScriptFile" name="file" type="file" accept=".py">
+                        <div class="file-path-hint">脚本将保存至 E:\ai\workflow\AICC\线索变量脚本\线索变量脚本。</div>
+                      </div>
+                    </div>
+                    <div class="config-status-line">
+                      <span class="hint">确认后，该门店会进入线索导入下拉菜单，并由该脚本处理上传 Excel。</span>
+                      <button class="btn primary" type="submit">确认配置</button>
+                    </div>
+                  </div>
+                </form>
               </div>
 
-              <div class="tab-panel" id="tab-robot">
-                <div class="config-grid">
-                  <div class="field"><label>机器人名称</label><input class="input" value="合肥马自达保养招揽"></div>
-                  <div class="field"><label>所属门店</label><input class="input" value="合肥马自达"></div>
-                  <div class="field"><label>外呼场景</label><input class="input" value="售后保养提醒"></div>
-                  <div class="field"><label>是否默认</label><select class="select"><option>是</option><option>否</option></select></div>
-                  <div class="field"><label>状态</label><select class="select"><option>启用</option><option>停用</option></select></div>
-                </div>
+              <div class="tab-panel" id="tab-split-config">
+                <form class="config-card" id="splitStoreConfigForm">
+                  <div class="config-card-head">
+                    <h3>线索预分割新增门店配置</h3>
+                    <span class="status gray" id="configSplitStatus">未提交</span>
+                  </div>
+                  <div class="config-card-body">
+                    <div class="config-grid">
+                      <div class="field">
+                        <label for="configSplitStoreName">门店名称</label>
+                        <input class="input" id="configSplitStoreName" name="store_name" placeholder="例如：合肥奥体马自达">
+                      </div>
+                      <div class="field">
+                        <label for="configSplitTemplateFile">上传门店模板</label>
+                        <input id="configSplitTemplateFile" name="file" type="file" accept=".xlsx">
+                      </div>
+                    </div>
+                    <div class="config-status-line">
+                      <span class="hint">模板将保存为“门店名称-模板.xlsx”，并自动加入左侧预分割门店菜单。</span>
+                      <button class="btn primary" type="submit">确认配置</button>
+                    </div>
+                  </div>
+                </form>
               </div>
 
-              <div class="tab-panel" id="tab-script">
-                <div class="config-grid">
-                  <div class="field"><label>功能类型</label><select class="select"><option>线索导入</option><option>线索预分割&自动外呼</option><option>日报生成</option></select></div>
-                  <div class="field"><label>门店</label><input class="input" value="合肥马自达"></div>
-                  <div class="field"><label>脚本路径</label><input class="input" value="线索变量脚本/线索变量脚本/合肥马自达.py"></div>
-                  <div class="field"><label>输出类型</label><select class="select"><option>txt</option><option>xlsx</option><option>report</option></select></div>
-                  <div class="field"><label>状态</label><select class="select"><option>启用</option><option>停用</option></select></div>
-                </div>
+              <div class="tab-panel" id="tab-outcall-config">
+                <form class="config-card" id="outcallTenantConfigForm">
+                  <div class="config-card-head">
+                    <h3>自动外呼新增门店配置</h3>
+                    <span class="status gray" id="configOutcallStatus">未提交</span>
+                  </div>
+                  <div class="config-card-body">
+                    <div class="config-grid">
+                      <div class="field"><label for="outcallConfigName">name</label><input class="input" id="outcallConfigName" name="name"></div>
+                      <div class="field"><label for="outcallConfigPrefixes">prefixes</label><textarea class="input" id="outcallConfigPrefixes" name="prefixes" placeholder="一行一个前缀，例如：&#10;天翔林肯&#10;武汉天翔"></textarea></div>
+                      <div class="field"><label for="outcallTestUsername">environments_test_username</label><input class="input" id="outcallTestUsername" name="environments_test_username"></div>
+                      <div class="field"><label for="outcallTestPassword">environments_test_password</label><input class="input" id="outcallTestPassword" name="environments_test_password" type="password"></div>
+                      <div class="field"><label for="outcallTestRobotId">environments_test_robot_id</label><input class="input" id="outcallTestRobotId" name="environments_test_robot_id"></div>
+                      <div class="field"><label for="outcallTestDealerId">environments_test_dealer_id</label><input class="input" id="outcallTestDealerId" name="environments_test_dealer_id"></div>
+                      <div class="field"><label for="outcallProdUsername">environments_prod_username</label><input class="input" id="outcallProdUsername" name="environments_prod_username"></div>
+                      <div class="field"><label for="outcallProdPassword">environments_prod_password</label><input class="input" id="outcallProdPassword" name="environments_prod_password" type="password"></div>
+                      <div class="field"><label for="outcallProdRobotId">environments_prod_robot_id</label><input class="input" id="outcallProdRobotId" name="environments_prod_robot_id"></div>
+                      <div class="field"><label for="outcallProdDealerId">environments_prod_dealer_id</label><input class="input" id="outcallProdDealerId" name="environments_prod_dealer_id"></div>
+                    </div>
+                    <div class="config-status-line">
+                      <span class="hint">确认后将按租户模板追加到 config.yaml 的 tenants 中。</span>
+                      <button class="btn primary" type="submit">确认配置</button>
+                    </div>
+                  </div>
+                </form>
               </div>
 
-              <div class="tab-panel" id="tab-rule">
-                <div class="config-grid">
-                  <div class="field"><label>测试线索数量</label><input class="input" type="number" value="5"></div>
-                  <div class="field"><label>每批线索数量</label><input class="input" type="number" value="45"></div>
-                  <div class="field"><label>每小时最大导入量</label><input class="input" type="number" value="100"></div>
-                  <div class="field"><label>规则状态</label><select class="select"><option>启用</option><option>停用</option></select></div>
-                </div>
+              <div class="tab-panel" id="tab-daily-config">
+                <form class="config-card" id="dailyAccountConfigForm">
+                  <div class="config-card-head">
+                    <h3>龙星行日报新增门店&机器人配置</h3>
+                    <span class="status gray" id="configDailyStatus">未提交</span>
+                  </div>
+                  <div class="config-card-body">
+                    <div class="config-grid">
+                      <div class="field"><label for="dailyConfigName">name</label><input class="input" id="dailyConfigName" name="name"></div>
+                      <div class="field"><label for="dailyConfigUsername">username</label><input class="input" id="dailyConfigUsername" name="username"></div>
+                      <div class="field"><label for="dailyConfigPassword">password</label><input class="input" id="dailyConfigPassword" name="password" type="password"></div>
+                      <div class="field"><label for="dailyHasMultipleRobots">该门店是否有多个机器人</label><select class="select" id="dailyHasMultipleRobots" name="has_multiple_robots"><option value="false">否</option><option value="true">是</option></select></div>
+                    </div>
+                    <div class="robot-extra" id="dailyRobotExtra" style="display:none;">
+                      <div class="config-grid">
+                        <div class="field"><label for="dailyGroupByCallField">group_by_call_field</label><input class="input" id="dailyGroupByCallField" name="group_by_call_field" value="机器人" readonly></div>
+                        <div class="field"><label for="dailyRequiredGroupValues">required_group_values</label><textarea class="input" id="dailyRequiredGroupValues" name="required_group_values" placeholder="龙星行-新车首呼-广东广州海珠，来自后台机器人名称"></textarea></div>
+                        <div class="field"><label for="dailyGroupDisplayNames">group_display_names</label><textarea class="input" id="dailyGroupDisplayNames" name="group_display_names" placeholder="龙星行-新车首呼-广东广州海珠: 广州龙星行-海珠新车首呼"></textarea></div>
+                        <div class="field"><label for="dailyGroupSummaryNames">group_summary_names</label><textarea class="input" id="dailyGroupSummaryNames" name="group_summary_names" placeholder="龙星行-新车首呼-广东广州海珠: 广州龙星行-海珠新车首呼"></textarea></div>
+                      </div>
+                    </div>
+                    <div class="config-status-line">
+                      <span class="hint">确认后将追加到 tools/recorder.py 的 ACCOUNTS 中。</span>
+                      <button class="btn primary" type="submit">确认配置</button>
+                    </div>
+                  </div>
+                </form>
               </div>
             </div>
           </div>
-        </section>
-      </div>
+        </section>      </div>
     </main>
   </section>
 
@@ -1428,12 +1682,24 @@
       app.style.display = 'flex';
     });
 
+    function currentPageName() {
+      const activePage = document.querySelector('.page.active');
+      return activePage?.id?.replace('page-', '') || 'lead';
+    }
+
+    function updateSplitStoreHighlight(page = currentPageName()) {
+      document.querySelectorAll('.submenu button').forEach(btn => {
+        btn.classList.toggle('active-store', page === 'split' && btn.dataset.store === currentSplitStore);
+      });
+    }
+
     function showPage(page) {
       document.querySelectorAll('.page').forEach(item => item.classList.remove('active'));
       document.getElementById(`page-${page}`).classList.add('active');
       document.querySelectorAll('.nav').forEach(item => item.classList.toggle('active', item.dataset.page === page));
       document.getElementById('crumb').textContent = `运营工具 / ${pages[page]}`;
       document.getElementById('mobileMenu').value = page;
+      updateSplitStoreHighlight(page);
     }
 
     document.querySelectorAll('.nav').forEach(btn => {
@@ -1446,9 +1712,12 @@
     const splitApiBaseUrl = 'http://127.0.0.1:18765/api/leads/split';
     const outcallApiBaseUrl = 'http://127.0.0.1:18765/api/leads/outcall';
     const dailyApiBaseUrl = 'http://127.0.0.1:18765/api/daily-report';
+    const taskRecordApiBaseUrl = 'http://127.0.0.1:18765/api/task-records';
+    const configApiBaseUrl = 'http://127.0.0.1:18765/api/config-center';
     let dailyCurrentJobId = '';
     let dailyPollTimer = null;
     let dailyStoresLoaded = false;
+    let taskRecordCache = [];
     const splitStoreCodeMap = {
       '合肥马自达': 'hefei_mazda',
       '美诚林肯': 'meicheng_lincoln',
@@ -1497,6 +1766,30 @@
 
     const splitStoreStates = Object.fromEntries(splitStoreNames.map(store => [store, createSplitStoreState()]));
 
+    function renderSplitStoreMenu() {
+      const menu = document.querySelector('.submenu');
+      menu.innerHTML = splitStoreNames.map(store => `<button data-store="${escapeHtml(store)}">${escapeHtml(store)}</button>`).join('');
+      updateSplitStoreHighlight();
+    }
+
+    function ensureSplitStore(storeName, storeCode) {
+      if (!storeName || !storeCode) return;
+      splitStoreCodeMap[storeName] = storeCode;
+      if (!splitStoreNames.includes(storeName)) splitStoreNames.push(storeName);
+      if (!splitStoreStates[storeName]) splitStoreStates[storeName] = createSplitStoreState();
+    }
+
+    async function loadSplitStores() {
+      try {
+        const response = await fetch(`${splitApiBaseUrl}/stores`);
+        const body = await parseApiResponse(response);
+        if (!response.ok) throw body.error || body;
+        (body.stores || []).forEach(store => ensureSplitStore(store.store_name, store.store_code));
+        renderSplitStoreMenu();
+      } catch (error) {
+        console.warn('线索预分割门店配置读取失败', error);
+      }
+    }
     function saveCurrentSplitState() {
       const batchSelect = document.getElementById('splitBatchSelect');
       const fileSelect = document.getElementById('splitFileSelect');
@@ -1530,9 +1823,7 @@
       currentSplitStore = store;
       document.getElementById('splitStoreFixed').textContent = store;
       document.getElementById('splitStoreTag').textContent = `当前门店：${store}`;
-      document.querySelectorAll('.submenu button').forEach(btn => {
-        btn.classList.toggle('active-store', btn.dataset.store === store);
-      });
+      updateSplitStoreHighlight();
       document.getElementById('splitStatus').className = state.splitStatusClass;
       document.getElementById('splitStatus').textContent = state.splitStatusText;
       document.getElementById('testCount').textContent = state.testCount;
@@ -1719,11 +2010,11 @@
       saveCurrentSplitState();
     }
 
-    document.querySelectorAll('.submenu button').forEach(btn => {
-      btn.addEventListener('click', () => {
-        switchSplitStore(btn.dataset.store);
-        showPage('split');
-      });
+    document.querySelector('.submenu').addEventListener('click', (event) => {
+      const btn = event.target.closest('button[data-store]');
+      if (!btn) return;
+      switchSplitStore(btn.dataset.store);
+      showPage('split');
     });
 
     document.getElementById('refreshSplitFiles').addEventListener('click', () => {
@@ -1754,6 +2045,28 @@
     };
     let leadImportJobDetail = null;
 
+    async function loadLeadStores() {
+      try {
+        const response = await fetch(`${leadApiBaseUrl}/stores`);
+        const body = await parseApiResponse(response);
+        if (!response.ok) throw body.error || body;
+        const select = document.getElementById('leadStore');
+        const current = select.value || '合肥马自达';
+        const options = [];
+        (body.stores || []).forEach(store => {
+          const displayName = store.folder_name || store.store_name;
+          leadStoreCodeMap[displayName] = store.store_code;
+          leadStoreScriptMap[displayName] = store.script_path;
+          options.push(`<option value="${escapeHtml(displayName)}">${escapeHtml(displayName)}</option>`);
+        });
+        select.innerHTML = options.join('');
+        if (leadStoreCodeMap[current]) select.value = current;
+        else if (leadStoreCodeMap['合肥马自达']) select.value = '合肥马自达';
+        resetLeadResult();
+      } catch (error) {
+        console.warn('线索导入门店配置读取失败', error);
+      }
+    }
     function setLeadStatus(className, text) {
       document.getElementById('leadStatus').className = className;
       document.getElementById('leadStatus').textContent = text;
@@ -2079,8 +2392,195 @@
       });
     }
 
-    function dailyReportCard(report) {
-      return `<div class="report-section"><h3>${escapeHtml(report.name || report.filename)}</h3><pre class="report-text">${escapeHtml(report.content || '报告文件为空')}</pre></div>`;
+    let dailyPreviewReportDate = '';
+
+    function renderDailyPreviewMessage(message) {
+      document.getElementById('reportBlocks').innerHTML = `<div class="report-empty">${escapeHtml(message)}</div>`;
+    }
+
+    function reportTextPanel(report, groupIndex, reportIndex) {
+      const targetId = `daily-report-${groupIndex}-${reportIndex}`;
+      const title = report.name || report.filename || '门店日报';
+      const content = report.missing ? '未找到该门店日报文件。' : (report.content || '日报文件为空');
+      return `
+        <div class="report-subsection">
+          <div class="report-subsection-head">
+            <h4>${escapeHtml(title)}</h4>
+            <button class="btn copy-btn" type="button" data-copy-target="${targetId}">复制</button>
+          </div>
+          <pre class="report-text" id="${targetId}">${escapeHtml(content)}</pre>
+        </div>`;
+    }
+
+    function summaryTablePanel(summary, groupIndex, group) {
+      const targetId = `daily-summary-${groupIndex}`;
+      const title = summary.filename || `${summary.name || '汇总表'} 汇总表`;
+      let body = `<div class="report-empty" id="${targetId}">未找到该分区汇总表。</div>`;
+      let copyAttr = `data-copy-target="${targetId}"`;
+      if (!summary.missing && summary.html) {
+        body = `<div class="summary-table-wrap" id="${targetId}">${summary.html}</div>`;
+        copyAttr = `data-copy-image-group="${group?.key || ''}" data-copy-target="${targetId}"`;
+      } else if (!summary.missing && (summary.columns || []).length) {
+        const columns = summary.columns || [];
+        const rows = summary.rows || [];
+        const head = columns.map(column => `<th>${escapeHtml(column)}</th>`).join('');
+        const tableRows = rows.map(row => {
+          const cells = columns.map((_, index) => `<td>${escapeHtml(row[index] ?? '')}</td>`).join('');
+          return `<tr>${cells}</tr>`;
+        }).join('');
+        body = `<div class="summary-table-wrap" id="${targetId}"><table class="summary-table"><thead><tr>${head}</tr></thead><tbody>${tableRows}</tbody></table></div>`;
+      }
+      return `
+        <div class="report-subsection">
+          <div class="report-subsection-head">
+            <h4>${escapeHtml(title)}</h4>
+            <button class="btn copy-btn" type="button" ${copyAttr}>复制截图</button>
+          </div>
+          ${body}
+        </div>`;
+    }
+
+    function renderDailyPreview(data) {
+      dailyPreviewReportDate = data.report_date || dailyPreviewReportDate;
+      const groups = data.groups || [];
+      if (!groups.length) {
+        renderDailyPreviewMessage(`${dailyPreviewReportDate || '当前日期'} 暂无可预览的日报和汇总表。`);
+        return;
+      }
+      document.getElementById('reportBlocks').innerHTML = groups.map((group, groupIndex) => {
+        const reports = (group.reports || []).map((report, reportIndex) => reportTextPanel(report, groupIndex, reportIndex)).join('');
+        const summary = summaryTablePanel(group.summary || {}, groupIndex, group);
+        return `
+          <section class="report-group">
+            <div class="report-group-head">
+              <h3>${escapeHtml(group.title || '日报分区')}</h3>
+              <span class="hint">${escapeHtml(data.report_date || '--')}</span>
+            </div>
+            <div class="report-pair">
+              <div class="report-stack">${reports}</div>
+              <div class="report-stack">${summary}</div>
+            </div>
+          </section>`;
+      }).join('');
+    }
+
+    async function loadDailyPreview({ reportDate = '', store = 'all' } = {}) {
+      const params = new URLSearchParams();
+      if (reportDate) params.set('report_date', reportDate);
+      params.set('store', store || 'all');
+      renderDailyPreviewMessage('正在读取日报和汇总表预览...');
+      try {
+        const response = await fetch(`${dailyApiBaseUrl}/preview?${params.toString()}`);
+        const body = await parseApiResponse(response);
+        if (!response.ok) throw body.error || body;
+        renderDailyPreview(body);
+      } catch (error) {
+        renderDailyPreviewMessage(`预览读取失败：${formatSplitError(error)}`);
+      }
+    }
+
+    async function copyTextToClipboard(text, button) {
+      const value = text || '';
+      if (!value.trim()) return;
+      try {
+        if (navigator.clipboard?.writeText) {
+          await navigator.clipboard.writeText(value);
+        } else {
+          const textarea = document.createElement('textarea');
+          textarea.value = value;
+          textarea.setAttribute('readonly', '');
+          textarea.style.position = 'fixed';
+          textarea.style.left = '-9999px';
+          document.body.appendChild(textarea);
+          textarea.select();
+          document.execCommand('copy');
+          textarea.remove();
+        }
+        showCopyDone(button);
+      } catch (error) {
+        alert(`复制失败：${formatSplitError(error)}`);
+      }
+    }
+
+    async function copySummaryImageToClipboard(group, button) {
+      if (!group) return;
+      const params = new URLSearchParams();
+      params.set('group', group);
+      if (dailyPreviewReportDate) params.set('report_date', dailyPreviewReportDate);
+      const original = button.textContent;
+      button.textContent = '生成中';
+      button.disabled = true;
+      try {
+        const response = await fetch(`${dailyApiBaseUrl}/summary-image?${params.toString()}`);
+        if (!response.ok) {
+          const body = await parseApiResponse(response);
+          throw body.error || body;
+        }
+        const blob = await response.blob();
+        const imageBlob = blob.type === 'image/png' ? blob : new Blob([blob], { type: 'image/png' });
+        if (navigator.clipboard?.write && window.ClipboardItem && window.isSecureContext) {
+          await navigator.clipboard.write([
+            new ClipboardItem({ 'image/png': imageBlob }),
+          ]);
+          showCopyDone(button);
+        } else {
+          downloadBlob(imageBlob, `${group}_${dailyPreviewReportDate || 'summary'}.png`);
+          button.textContent = '已下载';
+          setTimeout(() => { button.textContent = original; }, 1200);
+        }
+      } catch (error) {
+        alert(`复制截图失败：${formatSplitError(error)}`);
+        button.textContent = original;
+      } finally {
+        button.disabled = false;
+      }
+    }
+
+    function downloadBlob(blob, filename) {
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+
+    async function copyElementToClipboard(element, button) {
+      if (!element) return;
+      const table = element.querySelector('table');
+      const htmlTable = table ? table.outerHTML : element.innerHTML;
+      const htmlContent = `<!doctype html><html><head><meta charset="utf-8"></head><body>${htmlTable}</body></html>`;
+      const textContent = (table || element).innerText || (table || element).textContent || '';
+      if (!htmlContent.trim()) return;
+      try {
+        if (navigator.clipboard?.write && window.ClipboardItem) {
+          await navigator.clipboard.write([
+            new ClipboardItem({
+              'text/html': new Blob([htmlContent], { type: 'text/html' }),
+              'text/plain': new Blob([textContent], { type: 'text/plain' }),
+            }),
+          ]);
+        } else {
+          const range = document.createRange();
+          range.selectNodeContents(element);
+          const selection = window.getSelection();
+          selection.removeAllRanges();
+          selection.addRange(range);
+          document.execCommand('copy');
+          selection.removeAllRanges();
+        }
+        showCopyDone(button);
+      } catch (error) {
+        alert(`复制失败：${formatSplitError(error)}`);
+      }
+    }
+
+    function showCopyDone(button) {
+      const original = button.textContent;
+      button.textContent = '已复制';
+      setTimeout(() => { button.textContent = original; }, 1200);
     }
 
     function renderDailyJob(job) {
@@ -2104,12 +2604,12 @@
       const errorText = job.error?.detail ? `\n\n错误：${job.error.detail}` : '';
       document.getElementById('dailyLog').textContent = `${head}\n\n${job.log || '等待脚本输出...'}${errorText}`;
 
-      if (job.reports?.length) {
-        document.getElementById('reportBlocks').innerHTML = job.reports.map(dailyReportCard).join('');
+      if (job.status === 'completed') {
+        loadDailyPreview({ reportDate: job.report_date, store: job.store || 'all' });
       } else if (job.status === 'running') {
-        document.getElementById('reportBlocks').innerHTML = '<div class="report-section"><h3>生成中</h3><pre class="report-text">正在执行 main.py，完成后将展示每日报告文本。</pre></div>';
+        renderDailyPreviewMessage('正在执行 main.py，完成后将展示每日报告文本和汇总表。');
       } else if (job.status === 'failed') {
-        document.getElementById('reportBlocks').innerHTML = '<div class="report-section"><h3>生成失败</h3><pre class="report-text">请查看左侧执行日志。</pre></div>';
+        renderDailyPreviewMessage('生成失败，请查看日报任务日志。');
       }
     }
 
@@ -2155,7 +2655,7 @@
       document.getElementById('dailyStatus').textContent = '启动中';
       setDailySteps('running');
       document.getElementById('dailyLog').textContent = refreshClue ? '正在提交日报任务，将重拉线索明细...' : '正在提交日报任务...';
-      document.getElementById('reportBlocks').innerHTML = '<div class="report-section"><h3>等待输出</h3><pre class="report-text">任务已提交，正在等待 main.py 输出。</pre></div>';
+      renderDailyPreviewMessage('任务已提交，正在等待 main.py 输出。');
       try {
         const response = await fetch(`${dailyApiBaseUrl}/jobs`, {
           method: 'POST',
@@ -2239,6 +2739,253 @@
       }
     });
 
+    document.getElementById('refreshDailyPreview').addEventListener('click', () => {
+      loadDailyPreview({ reportDate: dailyPreviewReportDate || '' });
+    });
+
+    document.getElementById('reportBlocks').addEventListener('click', event => {
+      const button = event.target.closest('[data-copy-target], [data-copy-image-group]');
+      if (!button) return;
+      if (button.dataset.copyImageGroup) {
+        copySummaryImageToClipboard(button.dataset.copyImageGroup, button);
+        return;
+      }
+      const target = document.getElementById(button.dataset.copyTarget);
+      copyTextToClipboard(target?.innerText || target?.textContent || '', button);
+    });
+
+    loadDailyPreview();
+
+    function buildTaskDateOptions() {
+      const select = document.getElementById('taskDatePreset');
+      if (!select) return;
+      const options = ['<option value="recent">近一周</option>'];
+      const now = new Date();
+      for (let index = 0; index < 7; index += 1) {
+        const date = new Date(now.getTime() - index * 86400000);
+        const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+        const value = local.toISOString().slice(0, 10);
+        const label = index === 0 ? `今天 ${value}` : `${value}`;
+        options.push(`<option value="${value}">${label}</option>`);
+      }
+      options.push('<option value="custom">自定义日期</option>');
+      select.innerHTML = options.join('');
+      document.getElementById('taskCustomDate').value = todayDateInputValue();
+    }
+
+    function selectedTaskDate() {
+      const preset = document.getElementById('taskDatePreset').value;
+      if (preset === 'custom') return document.getElementById('taskCustomDate').value || '';
+      if (preset === 'recent') return '';
+      return preset || '';
+    }
+
+    function updateTaskDateInputVisibility() {
+      const isCustom = document.getElementById('taskDatePreset').value === 'custom';
+      document.getElementById('taskCustomDate').style.display = isCustom ? '' : 'none';
+    }
+
+    function taskStatusClass(status) {
+      if (status === 'completed') return 'status ok';
+      if (status === 'failed' || status === 'terminated') return 'status fail';
+      if (status === 'running' || status === 'processing') return 'status info';
+      if (status === 'need_confirmation') return 'status warn';
+      return 'status gray';
+    }
+
+    function formatTaskTime(value) {
+      if (!value) return '--';
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return value;
+      const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+      return local.toISOString().slice(0, 19).replace('T', ' ');
+    }
+
+    function compactFileList(files) {
+      const list = files || [];
+      if (!list.length) return '--';
+      if (list.length <= 3) return list.map(escapeHtml).join('<br>');
+      return `${list.slice(0, 3).map(escapeHtml).join('<br>')}<br><span class="hint">另 ${list.length - 3} 个文件</span>`;
+    }
+
+    function renderTaskRecords(records) {
+      const tbody = document.getElementById('taskRecordRows');
+      if (!records.length) {
+        tbody.innerHTML = '<tr><td colspan="9">当前筛选条件下暂无任务记录。</td></tr>';
+        return;
+      }
+      tbody.innerHTML = records.map((record, index) => `
+        <tr>
+          <td>${escapeHtml(record.task_type_name || record.task_type)}</td>
+          <td>${escapeHtml(record.task_name || '--')}</td>
+          <td>${escapeHtml(record.executor || '运营专员')}</td>
+          <td><span class="${taskStatusClass(record.status)}">${escapeHtml(record.status_name || record.status || '--')}</span></td>
+          <td>${escapeHtml(record.input_file || '--')}</td>
+          <td>${compactFileList(record.output_files)}</td>
+          <td>${formatTaskTime(record.created_at)}</td>
+          <td>${formatTaskTime(record.completed_at)}</td>
+          <td><button class="btn" type="button" data-task-detail="${index}">详情</button></td>
+        </tr>
+      `).join('');
+    }
+
+    async function loadTaskRecords() {
+      const status = document.getElementById('taskRecordStatus');
+      const type = document.getElementById('taskTypeFilter').value || 'all';
+      const date = selectedTaskDate();
+      const params = new URLSearchParams({ task_type: type, days: '7' });
+      if (date) params.set('date', date);
+      status.className = 'status info';
+      status.textContent = '刷新中';
+      try {
+        const response = await fetch(`${taskRecordApiBaseUrl}?${params.toString()}`);
+        const body = await parseApiResponse(response);
+        if (!response.ok) throw body.error || body;
+        taskRecordCache = body.records || [];
+        renderTaskRecords(taskRecordCache);
+        status.className = 'status ok';
+        status.textContent = `${body.total || 0} 条记录`;
+      } catch (error) {
+        document.getElementById('taskRecordRows').innerHTML = `<tr><td colspan="9">任务记录读取失败：${escapeHtml(formatSplitError(error))}</td></tr>`;
+        status.className = 'status fail';
+        status.textContent = '读取失败';
+      }
+    }
+
+    function showTaskDetail(index) {
+      const record = taskRecordCache[index];
+      if (!record) return;
+      const lines = [
+        `任务类型：${record.task_type_name || record.task_type}`,
+        `任务名称：${record.task_name}`,
+        `执行人：${record.executor || '运营专员'}`,
+        `状态：${record.status_name || record.status}`,
+        `输入文件：${record.input_file || '--'}`,
+        `输出文件：${(record.output_files || []).join('、') || '--'}`,
+        `创建时间：${formatTaskTime(record.created_at)}`,
+        `完成时间：${formatTaskTime(record.completed_at)}`,
+        record.error ? `错误信息：${record.error}` : '',
+      ].filter(Boolean);
+      alert(lines.join('\n'));
+    }
+
+    buildTaskDateOptions();
+    updateTaskDateInputVisibility();
+    document.getElementById('taskDatePreset').addEventListener('change', () => {
+      updateTaskDateInputVisibility();
+      loadTaskRecords();
+    });
+    document.getElementById('taskCustomDate').addEventListener('change', loadTaskRecords);
+    document.getElementById('taskTypeFilter').addEventListener('change', loadTaskRecords);
+    document.getElementById('refreshTaskRecords').addEventListener('click', loadTaskRecords);
+    document.getElementById('taskRecordRows').addEventListener('click', event => {
+      const button = event.target.closest('[data-task-detail]');
+      if (button) showTaskDetail(Number(button.dataset.taskDetail));
+    });
+    loadTaskRecords();
+
+    function setConfigStatus(id, className, text) {
+      const target = document.getElementById(id);
+      target.className = className;
+      target.textContent = text;
+    }
+
+    function formPayload(form) {
+      const data = new FormData(form);
+      const payload = {};
+      data.forEach((value, key) => {
+        if (value instanceof File) return;
+        payload[key] = value;
+      });
+      return payload;
+    }
+
+    async function submitJsonConfig(form, statusId, endpoint, successText) {
+      if (!confirm('确认写入该配置？')) return null;
+      setConfigStatus(statusId, 'status info', '提交中');
+      try {
+        const payload = formPayload(form);
+        if (payload.has_multiple_robots !== undefined) payload.has_multiple_robots = payload.has_multiple_robots === 'true';
+        const response = await fetch(`${configApiBaseUrl}/${endpoint}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const body = await parseApiResponse(response);
+        if (!response.ok) throw body.error || body;
+        setConfigStatus(statusId, 'status ok', successText || '已保存');
+        form.reset();
+        document.getElementById('dailyGroupByCallField').value = '机器人';
+        updateDailyRobotFields();
+        return body;
+      } catch (error) {
+        setConfigStatus(statusId, 'status danger', '保存失败');
+        alert(formatLeadError(error));
+        return null;
+      }
+    }
+
+    async function submitMultipartConfig(form, statusId, endpoint, successText) {
+      if (!confirm('确认写入该配置？')) return null;
+      setConfigStatus(statusId, 'status info', '提交中');
+      try {
+        const response = await fetch(`${configApiBaseUrl}/${endpoint}`, {
+          method: 'POST',
+          body: new FormData(form),
+        });
+        const body = await parseApiResponse(response);
+        if (!response.ok) throw body.error || body;
+        setConfigStatus(statusId, 'status ok', successText || '已保存');
+        form.reset();
+        return body;
+      } catch (error) {
+        setConfigStatus(statusId, 'status danger', '保存失败');
+        alert(formatLeadError(error));
+        return null;
+      }
+    }
+
+    function updateDailyRobotFields() {
+      const visible = document.getElementById('dailyHasMultipleRobots').value === 'true';
+      document.getElementById('dailyRobotExtra').style.display = visible ? 'grid' : 'none';
+    }
+
+    async function refreshConfigSummary() {
+      await Promise.all([loadLeadStores(), loadSplitStores(), loadDailyStores()]);
+    }
+
+    document.getElementById('leadScriptConfigForm').addEventListener('submit', async event => {
+      event.preventDefault();
+      const body = await submitMultipartConfig(event.currentTarget, 'configLeadStatus', 'lead-scripts', '脚本已保存');
+      if (body?.store) {
+        await loadLeadStores();
+        document.getElementById('leadStore').value = body.store.folder_name || body.store.store_name;
+      }
+    });
+
+    document.getElementById('splitStoreConfigForm').addEventListener('submit', async event => {
+      event.preventDefault();
+      const body = await submitMultipartConfig(event.currentTarget, 'configSplitStatus', 'split-stores', '门店已保存');
+      if (body?.store) {
+        ensureSplitStore(body.store.store_name, body.store.store_code);
+        renderSplitStoreMenu();
+      }
+    });
+
+    document.getElementById('outcallTenantConfigForm').addEventListener('submit', async event => {
+      event.preventDefault();
+      await submitJsonConfig(event.currentTarget, 'configOutcallStatus', 'outcall-tenants', '租户已写入');
+    });
+
+    document.getElementById('dailyAccountConfigForm').addEventListener('submit', async event => {
+      event.preventDefault();
+      const body = await submitJsonConfig(event.currentTarget, 'configDailyStatus', 'daily-accounts', '账号已写入');
+      if (body) await loadDailyStores();
+    });
+
+    document.getElementById('dailyHasMultipleRobots').addEventListener('change', updateDailyRobotFields);
+    document.getElementById('refreshConfigSummary').addEventListener('click', refreshConfigSummary);
+    refreshConfigSummary();
     function reportCard(name, total, rate, valid, top) {
       return `<div class="report-section"><h3>${name}</h3><dl><div><dt>新增线索</dt><dd>${total}</dd></div><div><dt>接通率</dt><dd>${rate}</dd></div><div><dt>有效线索</dt><dd>${valid}</dd></div><div><dt>TOP 未接通</dt><dd>${top}</dd></div></dl></div>`;
     }
