@@ -896,6 +896,45 @@
       background: #fff;
     }
 
+    .monthly-summary-blocks {
+      display: grid;
+      gap: 16px;
+      margin-top: 16px;
+    }
+
+    .monthly-summary-group {
+      border: 1px solid #bfdbfe;
+      border-radius: var(--radius);
+      background: #fff;
+      overflow: hidden;
+      transition: box-shadow 0.25s ease, border-color 0.25s ease, background-color 0.25s ease;
+    }
+
+    .monthly-summary-group.highlight {
+      animation: monthlySummaryPulse 1.8s ease;
+    }
+
+    .monthly-summary-wrap {
+      overflow-x: auto;
+      overflow-y: visible;
+    }
+
+    .monthly-summary-wrap .excel-summary-table {
+      width: max-content !important;
+      min-width: 100%;
+    }
+
+    .monthly-summary-wrap .summary-table td,
+    .monthly-summary-wrap .summary-table th {
+      font-size: 13px !important;
+      line-height: 1.45 !important;
+    }
+
+    @keyframes monthlySummaryPulse {
+      0% { box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.28); background: #eff6ff; border-color: #60a5fa; }
+      70% { box-shadow: 0 0 0 12px rgba(37, 99, 235, 0); background: #fff; border-color: #bfdbfe; }
+      100% { box-shadow: none; background: #fff; border-color: #bfdbfe; }
+    }
     .summary-table th,
     .summary-table td {
       padding: 8px 9px;
@@ -1415,6 +1454,8 @@
             <div class="toolbar">
               <button class="btn primary" id="generateDaily" type="button">生成今日龙星行日报</button>
               <button class="btn" id="generateSpecificDaily" type="button">生成特定日期日报</button>
+              <button class="btn" id="generateMonthlySummary" type="button">生成指定门店当月横向汇总表</button>
+              <button class="btn" id="generateAllStoreSummary" type="button">生成指定日期全门店汇总表</button>
             </div>
           </div>
 
@@ -1457,6 +1498,8 @@
                 <div class="report-blocks" id="reportBlocks">
                   <div class="report-empty">正在读取最新日报与汇总表预览。</div>
                 </div>
+                <div class="monthly-summary-blocks" id="monthlySummaryBlocks"></div>
+                <div class="monthly-summary-blocks" id="allStoreSummaryBlocks"></div>
               </div>
             </div>
             </div>
@@ -1664,6 +1707,42 @@
       </div>
     </div>
   </div>
+  <div class="modal-backdrop" id="monthlySummaryModal" aria-hidden="true">
+    <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="monthlySummaryModalTitle">
+      <div class="modal-head">
+        <h3 id="monthlySummaryModalTitle">生成指定门店当月横向汇总表</h3>
+        <button class="btn" id="monthlySummaryModalClose" type="button">关闭</button>
+      </div>
+      <div class="modal-body">
+        <div class="field">
+          <label for="monthlySummaryStoreSelect">门店</label>
+          <select class="select" id="monthlySummaryStoreSelect" multiple size="8"></select>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn" id="monthlySummaryModalCancel" type="button">取消</button>
+        <button class="btn primary" id="monthlySummaryModalConfirm" type="button">确认生成</button>
+      </div>
+    </div>
+  </div>
+  <div class="modal-backdrop" id="allStoreSummaryModal" aria-hidden="true">
+    <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="allStoreSummaryModalTitle">
+      <div class="modal-head">
+        <h3 id="allStoreSummaryModalTitle">生成指定日期全门店汇总表</h3>
+        <button class="btn" id="allStoreSummaryModalClose" type="button">关闭</button>
+      </div>
+      <div class="modal-body">
+        <div class="field">
+          <label for="allStoreSummaryDateInput">日期</label>
+          <input id="allStoreSummaryDateInput" type="date">
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn" id="allStoreSummaryModalCancel" type="button">取消</button>
+        <button class="btn primary" id="allStoreSummaryModalConfirm" type="button">确认生成</button>
+      </div>
+    </div>
+  </div>
   <script>
     const loginPage = document.getElementById('loginPage');
     const app = document.getElementById('app');
@@ -1717,6 +1796,9 @@
     let dailyCurrentJobId = '';
     let dailyPollTimer = null;
     let dailyStoresLoaded = false;
+    let monthlySummaryStoresLoaded = false;
+    let monthlySummaryResult = null;
+    let allStoreSummaryResult = null;
     let taskRecordCache = [];
     const splitStoreCodeMap = {
       '合肥马自达': 'hefei_mazda',
@@ -2306,6 +2388,41 @@
       saveCurrentSplitState();
     });
 
+    async function submitOutcallJob({ store, environment, mode, splitJob, forceRestart = false }) {
+      const response = await fetch(`${outcallApiBaseUrl}/jobs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          store_code: splitStoreCodeMap[store],
+          environment,
+          mode,
+          split_job_id: splitJob.job_id,
+          force_restart: forceRestart,
+        }),
+      });
+      const body = await parseApiResponse(response);
+      if (!response.ok) throw body.error || body;
+      return body;
+    }
+
+    function handleOutcallJobStarted(mode, job) {
+      rememberOutcallJob(mode, job);
+      document.getElementById('formalState').className = mode === 'test' ? 'status warn' : 'status ok';
+      document.getElementById('formalState').textContent = mode === 'test' ? '测试外呼已启动，等待人工检查' : '正式批次外呼已启动';
+      document.getElementById('callStatusState').className = 'status info';
+      document.getElementById('callStatusState').textContent = '外呼中';
+      document.getElementById('callStatusReader').textContent = renderOutcallJobStatus(job);
+      pollOutcallJob(job.job_id, currentSplitStore);
+    }
+
+    function renderOutcallLaunchFailure(error) {
+      const errorText = error?.code === 'DUPLICATE_OUTCALL_FILE' ? (error.detail || error.message) : formatSplitError(error);
+      document.getElementById('callStatusState').className = 'status danger';
+      document.getElementById('callStatusState').textContent = '启动失败';
+      document.getElementById('callStatusReader').textContent = errorText;
+      return errorText;
+    }
+
     async function startOutcall(mode) {
       const store = currentSplitStore;
       const environment = document.getElementById('outcallEnvironment').value;
@@ -2323,36 +2440,35 @@
       document.getElementById('callStatusState').className = 'status info';
       document.getElementById('callStatusState').textContent = '启动中';
       document.getElementById('callStatusReader').textContent = `正在提交自动外呼任务：${store} / ${envText} / ${modeText}`;
+
+      const requestContext = { store, environment, mode, splitJob };
       try {
-        const response = await fetch(`${outcallApiBaseUrl}/jobs`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            store_code: splitStoreCodeMap[currentSplitStore],
-            environment,
-            mode,
-            split_job_id: splitJob.job_id,
-          }),
-        });
-        const body = await parseApiResponse(response);
-        if (!response.ok) throw body.error || body;
-        rememberOutcallJob(mode, body);
-        document.getElementById('formalState').className = mode === 'test' ? 'status warn' : 'status ok';
-        document.getElementById('formalState').textContent = mode === 'test' ? '测试外呼已启动，等待人工检查' : '正式批次外呼已启动';
-        document.getElementById('callStatusState').className = 'status info';
-        document.getElementById('callStatusState').textContent = '外呼中';
-        document.getElementById('callStatusReader').textContent = renderOutcallJobStatus(body);
-        pollOutcallJob(body.job_id, currentSplitStore);
+        const body = await submitOutcallJob(requestContext);
+        handleOutcallJobStarted(mode, body);
       } catch (error) {
-        const errorText = error?.code === 'DUPLICATE_OUTCALL_FILE' ? (error.detail || error.message) : formatSplitError(error);
-        document.getElementById('callStatusState').className = 'status danger';
-        document.getElementById('callStatusState').textContent = '启动失败';
-        document.getElementById('callStatusReader').textContent = errorText;
-        if (error?.code === 'DUPLICATE_OUTCALL_FILE') alert(errorText);
+        if (error?.code === 'DUPLICATE_OUTCALL_FILE') {
+          const errorText = error.detail || error.message || '该文件已被外呼禁止重复推出';
+          document.getElementById('callStatusState').className = 'status warn';
+          document.getElementById('callStatusState').textContent = '重复拦截';
+          document.getElementById('callStatusReader').textContent = `${errorText}\n\n如确认需要重呼，可选择重新发起外呼。`;
+          const retry = confirm(`${errorText}\n\n是否重新发起外呼？\n\n选择“确定”：跳过重复兜底检查并重新发起外呼。\n选择“取消”：保持禁止重复推出。`);
+          if (retry) {
+            document.getElementById('callStatusState').className = 'status info';
+            document.getElementById('callStatusState').textContent = '重新发起';
+            document.getElementById('callStatusReader').textContent = `用户已确认重新发起外呼：${store} / ${envText} / ${modeText}`;
+            try {
+              const retryBody = await submitOutcallJob({ ...requestContext, forceRestart: true });
+              handleOutcallJobStarted(mode, retryBody);
+            } catch (retryError) {
+              renderOutcallLaunchFailure(retryError);
+            }
+          }
+        } else {
+          renderOutcallLaunchFailure(error);
+        }
       }
       saveCurrentSplitState();
     }
-
     document.getElementById('pushTest').addEventListener('click', () => startOutcall('test'));
 
     document.getElementById('pushFormal').addEventListener('click', () => startOutcall('formal'));
@@ -2464,6 +2580,313 @@
       }).join('');
     }
 
+    function monthlySummaryPanel(group, index) {
+      const summary = group.summary || {};
+      const targetId = `monthly-summary-${group.key || index}`;
+      const title = group.title || `${group.name || '门店'}月度横向汇总`;
+      const body = summary.html
+        ? `<div class="summary-table-wrap monthly-summary-wrap" id="${targetId}">${summary.html}</div>`
+        : `<div class="report-empty" id="${targetId}">未生成该门店月度横向汇总表。</div>`;
+      return `
+        <section class="monthly-summary-group" data-monthly-summary-group="${escapeHtml(group.key || '')}">
+          <div class="report-group-head">
+            <h3>${escapeHtml(title)}</h3>
+            <div class="toolbar">
+              <span class="hint">${escapeHtml(group.period || '')}</span>
+              <button class="btn copy-btn" type="button" data-copy-monthly-image-group="${escapeHtml(group.key || '')}" data-copy-monthly-period="${escapeHtml(group.period || '')}" data-copy-target="${targetId}">复制截图</button>
+            </div>
+          </div>
+          <div class="report-stack">${body}</div>
+        </section>`;
+    }
+
+    function renderMonthlySummary(data) {
+      monthlySummaryResult = data;
+      const container = document.getElementById('monthlySummaryBlocks');
+      const groups = data.groups || [];
+      if (!groups.length) {
+        container.innerHTML = '<div class="report-empty">未生成月度横向汇总表。</div>';
+        return;
+      }
+      container.innerHTML = groups.map((group, index) => monthlySummaryPanel(group, index)).join('');
+      const firstGroup = container.querySelector('.monthly-summary-group');
+      requestAnimationFrame(() => {
+        container.scrollIntoView({ behavior: 'smooth', block: 'end' });
+        firstGroup?.classList.add('highlight');
+        setTimeout(() => firstGroup?.classList.remove('highlight'), 1900);
+      });
+    }
+
+    async function loadMonthlySummaryStores() {
+      if (monthlySummaryStoresLoaded) return;
+      const select = document.getElementById('monthlySummaryStoreSelect');
+      select.innerHTML = '<option value="">正在读取门店...</option>';
+      try {
+        const response = await fetch(`${dailyApiBaseUrl}/monthly-summary/stores`);
+        const body = await parseApiResponse(response);
+        if (!response.ok) throw body.error || body;
+        select.innerHTML = (body.stores || []).map(store => `<option value="${escapeHtml(store.code)}">${escapeHtml(store.name)}</option>`).join('');
+        monthlySummaryStoresLoaded = true;
+      } catch (error) {
+        select.innerHTML = '';
+        document.getElementById('dailyLog').textContent = formatSplitError(error);
+      }
+    }
+
+    function openMonthlySummaryModal() {
+      document.getElementById('monthlySummaryModal').classList.add('open');
+      document.getElementById('monthlySummaryModal').setAttribute('aria-hidden', 'false');
+      loadMonthlySummaryStores();
+    }
+
+    function closeMonthlySummaryModal() {
+      document.getElementById('monthlySummaryModal').classList.remove('open');
+      document.getElementById('monthlySummaryModal').setAttribute('aria-hidden', 'true');
+    }
+
+    async function checkMonthlySummaryStatus(groups) {
+      const response = await fetch(`${dailyApiBaseUrl}/monthly-summary/status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ groups }),
+      });
+      const body = await parseApiResponse(response);
+      if (!response.ok) throw body.error || body;
+      return body;
+    }
+
+    async function submitMonthlySummary(groups, forceOverwrite) {
+      const response = await fetch(`${dailyApiBaseUrl}/monthly-summary`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ groups, force_overwrite: forceOverwrite }),
+      });
+      const body = await parseApiResponse(response);
+      if (!response.ok) throw body.error || body;
+      return body;
+    }
+
+    async function generateMonthlySummary() {
+      const select = document.getElementById('monthlySummaryStoreSelect');
+      const groups = Array.from(select.selectedOptions).map(option => option.value).filter(Boolean);
+      const names = Array.from(select.selectedOptions).map(option => option.textContent).filter(Boolean).join('、');
+      if (!groups.length) {
+        alert('请选择至少一个门店');
+        return;
+      }
+      document.getElementById('dailyStatus').className = 'status info';
+      document.getElementById('dailyStatus').textContent = '检查中';
+      document.getElementById('dailyLog').textContent = `正在检查当月横向汇总目录：${names}`;
+      try {
+        const status = await checkMonthlySummaryStatus(groups);
+        const existingItems = (status.items || []).filter(item => item.store_dir_exists);
+        let forceOverwrite = false;
+        if (existingItems.length) {
+          const existingNames = existingItems.map(item => item.name).join('、');
+          forceOverwrite = confirm(`【${existingNames}】在 ${status.period} 已生成过当月横向汇总表。\n\n是否再次生成并覆盖原所有文件？\n\n选择“确定”：清空对应门店目录后重新拉取生成。\n选择“取消”：不生成。`);
+          if (!forceOverwrite) {
+            document.getElementById('dailyStatus').className = 'status gray';
+            document.getElementById('dailyStatus').textContent = '已取消';
+            document.getElementById('dailyLog').textContent = '已取消重复生成。';
+            return;
+          }
+        } else if (!confirm(`确认生成【${names}】当月横向汇总表？`)) {
+          document.getElementById('dailyStatus').className = 'status gray';
+          document.getElementById('dailyStatus').textContent = '已取消';
+          document.getElementById('dailyLog').textContent = '已取消生成。';
+          return;
+        }
+        closeMonthlySummaryModal();
+        document.getElementById('dailyStatus').className = 'status info';
+        document.getElementById('dailyStatus').textContent = '月度汇总中';
+        document.getElementById('dailyLog').textContent = forceOverwrite ? `正在覆盖生成当月横向汇总表：${names}` : `正在生成当月横向汇总表：${names}`;
+        const body = await submitMonthlySummary(groups, forceOverwrite);
+        renderMonthlySummary(body);
+        document.getElementById('dailyStatus').className = 'status ok';
+        document.getElementById('dailyStatus').textContent = '月度汇总完成';
+        const errorText = (body.errors || []).length ? `\n部分门店未生成：${(body.errors || []).map(item => item.message).join('；')}` : '';
+        document.getElementById('dailyLog').textContent = `已生成 ${body.period} 当月横向汇总表，保存目录：${body.output_dir}${errorText}`;
+      } catch (error) {
+        document.getElementById('dailyStatus').className = 'status danger';
+        document.getElementById('dailyStatus').textContent = '月度汇总失败';
+        document.getElementById('dailyLog').textContent = formatSplitError(error);
+      }
+    }
+
+
+    async function copyMonthlySummaryImageToClipboard(group, period, button) {
+      if (!group || !period) return;
+      const params = new URLSearchParams();
+      params.set('group', group);
+      params.set('period', period);
+      const original = button.textContent;
+      button.textContent = '生成中';
+      button.disabled = true;
+      try {
+        const response = await fetch(`${dailyApiBaseUrl}/monthly-summary-image?${params.toString()}`);
+        if (!response.ok) {
+          const body = await parseApiResponse(response);
+          throw body.error || body;
+        }
+        const blob = await response.blob();
+        const imageBlob = blob.type === 'image/png' ? blob : new Blob([blob], { type: 'image/png' });
+        if (navigator.clipboard?.write && window.ClipboardItem && window.isSecureContext) {
+          await navigator.clipboard.write([
+            new ClipboardItem({ 'image/png': imageBlob }),
+          ]);
+          showCopyDone(button);
+        } else {
+          downloadBlob(imageBlob, `${group}_${period}_monthly.png`);
+          button.textContent = '已下载';
+          setTimeout(() => { button.textContent = original; }, 1200);
+        }
+      } catch (error) {
+        alert(`复制截图失败：${formatSplitError(error)}`);
+        button.textContent = original;
+      } finally {
+        button.disabled = false;
+      }
+    }
+    function allStoreSummaryPanel(data) {
+      const summary = data.summary || {};
+      const reportDate = data.report_date || '';
+      const targetId = `all-store-summary-${reportDate || 'latest'}`;
+      const title = data.title || `${reportDate.slice(-4)}全门店汇总`;
+      const body = summary.html
+        ? `<div class="summary-table-wrap monthly-summary-wrap" id="${targetId}">${summary.html}</div>`
+        : `<div class="report-empty" id="${targetId}">未生成该日期全门店汇总表。</div>`;
+      return `
+        <section class="monthly-summary-group" data-all-store-summary-date="${escapeHtml(reportDate)}">
+          <div class="report-group-head">
+            <h3>${escapeHtml(title)}</h3>
+            <div class="toolbar">
+              <span class="hint">${escapeHtml(reportDate)}</span>
+              <button class="btn copy-btn" type="button" data-copy-all-store-report-date="${escapeHtml(reportDate)}" data-copy-target="${targetId}">复制截图</button>
+            </div>
+          </div>
+          <div class="report-stack">${body}</div>
+        </section>`;
+    }
+
+    function renderAllStoreSummary(data) {
+      allStoreSummaryResult = data;
+      const container = document.getElementById('allStoreSummaryBlocks');
+      container.innerHTML = allStoreSummaryPanel(data);
+      const section = container.querySelector('.monthly-summary-group');
+      requestAnimationFrame(() => {
+        container.scrollIntoView({ behavior: 'smooth', block: 'end' });
+        section?.classList.add('highlight');
+        setTimeout(() => section?.classList.remove('highlight'), 1900);
+      });
+    }
+
+    function openAllStoreSummaryModal() {
+      document.getElementById('allStoreSummaryDateInput').value = todayDateInputValue();
+      document.getElementById('allStoreSummaryModal').classList.add('open');
+      document.getElementById('allStoreSummaryModal').setAttribute('aria-hidden', 'false');
+    }
+
+    function closeAllStoreSummaryModal() {
+      document.getElementById('allStoreSummaryModal').classList.remove('open');
+      document.getElementById('allStoreSummaryModal').setAttribute('aria-hidden', 'true');
+    }
+
+    async function checkAllStoreSummaryStatus(reportDate) {
+      const params = new URLSearchParams();
+      params.set('report_date', reportDate);
+      const response = await fetch(`${dailyApiBaseUrl}/all-store-summary/status?${params.toString()}`);
+      const body = await parseApiResponse(response);
+      if (!response.ok) throw body.error || body;
+      return body;
+    }
+
+    async function submitAllStoreSummary(reportDate, forceOverwrite) {
+      const response = await fetch(`${dailyApiBaseUrl}/all-store-summary`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ report_date: reportDate, force_overwrite: forceOverwrite }),
+      });
+      const body = await parseApiResponse(response);
+      if (!response.ok) throw body.error || body;
+      return body;
+    }
+
+    async function generateAllStoreSummary() {
+      const reportDate = dateInputToReportDate(document.getElementById('allStoreSummaryDateInput').value);
+      if (!reportDate) {
+        alert('请选择汇总日期');
+        return;
+      }
+      document.getElementById('dailyStatus').className = 'status info';
+      document.getElementById('dailyStatus').textContent = '检查中';
+      document.getElementById('dailyLog').textContent = `正在检查 ${reportDate} 全门店机器人汇总表是否已存在...`;
+      try {
+        const status = await checkAllStoreSummaryStatus(reportDate);
+        let forceOverwrite = false;
+        if (status.exists) {
+          forceOverwrite = confirm(`已有${status.filename}，是否要重新生成？\n\n选择“确定”：覆盖原文件并重新生成。\n选择“取消”：不生成。`);
+          if (!forceOverwrite) {
+            document.getElementById('dailyStatus').className = 'status gray';
+            document.getElementById('dailyStatus').textContent = '已取消';
+            document.getElementById('dailyLog').textContent = `已取消重新生成 ${status.filename}。`;
+            return;
+          }
+        } else if (!confirm(`确认生成 ${reportDate} 全门店机器人汇总表？`)) {
+          document.getElementById('dailyStatus').className = 'status gray';
+          document.getElementById('dailyStatus').textContent = '已取消';
+          document.getElementById('dailyLog').textContent = '已取消生成全门店机器人汇总表。';
+          return;
+        }
+        closeAllStoreSummaryModal();
+        document.getElementById('dailyStatus').className = 'status info';
+        document.getElementById('dailyStatus').textContent = '全门店汇总中';
+        document.getElementById('dailyLog').textContent = forceOverwrite
+          ? `正在覆盖生成 ${reportDate} 全门店机器人汇总表...`
+          : `正在生成 ${reportDate} 全门店机器人汇总表...`;
+        const body = await submitAllStoreSummary(reportDate, forceOverwrite);
+        renderAllStoreSummary(body);
+        document.getElementById('dailyStatus').className = 'status ok';
+        document.getElementById('dailyStatus').textContent = '全门店汇总完成';
+        document.getElementById('dailyLog').textContent = `已生成 ${body.report_date} 全门店机器人汇总表，保存目录：${body.output_dir}`;
+      } catch (error) {
+        document.getElementById('dailyStatus').className = 'status danger';
+        document.getElementById('dailyStatus').textContent = '全门店汇总失败';
+        document.getElementById('dailyLog').textContent = formatSplitError(error);
+      }
+    }
+
+    async function copyAllStoreSummaryImageToClipboard(reportDate, button) {
+      if (!reportDate) return;
+      const params = new URLSearchParams();
+      params.set('report_date', reportDate);
+      const original = button.textContent;
+      button.textContent = '生成中';
+      button.disabled = true;
+      try {
+        const response = await fetch(`${dailyApiBaseUrl}/all-store-summary-image?${params.toString()}`);
+        if (!response.ok) {
+          const body = await parseApiResponse(response);
+          throw body.error || body;
+        }
+        const blob = await response.blob();
+        const imageBlob = blob.type === 'image/png' ? blob : new Blob([blob], { type: 'image/png' });
+        if (navigator.clipboard?.write && window.ClipboardItem && window.isSecureContext) {
+          await navigator.clipboard.write([
+            new ClipboardItem({ 'image/png': imageBlob }),
+          ]);
+          showCopyDone(button);
+        } else {
+          downloadBlob(imageBlob, `all_store_${reportDate}.png`);
+          button.textContent = '已下载';
+          setTimeout(() => { button.textContent = original; }, 1200);
+        }
+      } catch (error) {
+        alert(`复制截图失败：${formatSplitError(error)}`);
+        button.textContent = original;
+      } finally {
+        button.disabled = false;
+      }
+    }
     async function loadDailyPreview({ reportDate = '', store = 'all' } = {}) {
       const params = new URLSearchParams();
       if (reportDate) params.set('report_date', reportDate);
@@ -2555,7 +2978,7 @@
       const textContent = (table || element).innerText || (table || element).textContent || '';
       if (!htmlContent.trim()) return;
       try {
-        if (navigator.clipboard?.write && window.ClipboardItem) {
+        if (navigator.clipboard?.write && window.ClipboardItem && window.isSecureContext) {
           await navigator.clipboard.write([
             new ClipboardItem({
               'text/html': new Blob([htmlContent], { type: 'text/html' }),
@@ -2743,16 +3166,43 @@
       loadDailyPreview({ reportDate: dailyPreviewReportDate || '' });
     });
 
-    document.getElementById('reportBlocks').addEventListener('click', event => {
-      const button = event.target.closest('[data-copy-target], [data-copy-image-group]');
+    document.getElementById('generateMonthlySummary').addEventListener('click', openMonthlySummaryModal);
+    document.getElementById('monthlySummaryModalClose').addEventListener('click', closeMonthlySummaryModal);
+    document.getElementById('monthlySummaryModalCancel').addEventListener('click', closeMonthlySummaryModal);
+    document.getElementById('monthlySummaryModal').addEventListener('click', event => {
+      if (event.target.id === 'monthlySummaryModal') closeMonthlySummaryModal();
+    });
+    document.getElementById('monthlySummaryModalConfirm').addEventListener('click', generateMonthlySummary);
+    document.getElementById('generateAllStoreSummary').addEventListener('click', openAllStoreSummaryModal);
+    document.getElementById('allStoreSummaryModalClose').addEventListener('click', closeAllStoreSummaryModal);
+    document.getElementById('allStoreSummaryModalCancel').addEventListener('click', closeAllStoreSummaryModal);
+    document.getElementById('allStoreSummaryModal').addEventListener('click', event => {
+      if (event.target.id === 'allStoreSummaryModal') closeAllStoreSummaryModal();
+    });
+    document.getElementById('allStoreSummaryModalConfirm').addEventListener('click', generateAllStoreSummary);
+
+    function handleDailyPreviewCopyClick(event) {
+      const button = event.target.closest('[data-copy-target], [data-copy-image-group], [data-copy-monthly-image-group], [data-copy-all-store-report-date]');
       if (!button) return;
+      if (button.dataset.copyAllStoreReportDate) {
+        copyAllStoreSummaryImageToClipboard(button.dataset.copyAllStoreReportDate, button);
+        return;
+      }
+      if (button.dataset.copyMonthlyImageGroup) {
+        copyMonthlySummaryImageToClipboard(button.dataset.copyMonthlyImageGroup, button.dataset.copyMonthlyPeriod, button);
+        return;
+      }
       if (button.dataset.copyImageGroup) {
         copySummaryImageToClipboard(button.dataset.copyImageGroup, button);
         return;
       }
       const target = document.getElementById(button.dataset.copyTarget);
       copyTextToClipboard(target?.innerText || target?.textContent || '', button);
-    });
+    }
+
+    document.getElementById('reportBlocks').addEventListener('click', handleDailyPreviewCopyClick);
+    document.getElementById('monthlySummaryBlocks').addEventListener('click', handleDailyPreviewCopyClick);
+    document.getElementById('allStoreSummaryBlocks').addEventListener('click', handleDailyPreviewCopyClick);
 
     loadDailyPreview();
 

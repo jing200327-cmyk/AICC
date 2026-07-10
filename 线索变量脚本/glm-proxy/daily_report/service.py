@@ -5,8 +5,12 @@ import html
 import importlib
 import os
 import re
+import shutil
+import stat
 import sys
+import time as time_module
 import uuid
+from copy import copy
 from dataclasses import asdict
 from datetime import date, datetime, time
 from io import BytesIO
@@ -110,6 +114,11 @@ class InvalidReportGroupError(DailyReportError):
     message = 'Report preview group is not configured'
 
 
+class AllStoreSummaryExistsError(DailyReportError):
+    code = 'ALL_STORE_SUMMARY_EXISTS'
+    message = 'All-store summary already exists'
+
+
 class DailyReportService:
     def __init__(self, project_root: Path):
         self.project_root = Path(project_root)
@@ -200,6 +209,433 @@ class DailyReportService:
         image_bytes = self._summary_image(summary_path)
         filename = f"{group_config['key']}_{report_date}.png"
         return image_bytes, filename
+
+    def list_monthly_summary_stores(self) -> list[dict[str, str]]:
+        return [
+            {
+                'code': group['key'],
+                'name': group['title'],
+                'summary': group['summary'],
+            }
+            for group in REPORT_PREVIEW_GROUPS
+        ]
+
+    def get_monthly_summary_status(self, groups: list[str], report_date: str | None = None) -> dict[str, Any]:
+        report_date = self._validate_report_date(report_date)
+        selected_groups = self._resolve_monthly_groups(groups)
+        period_start = f'{report_date[:4]}01'
+        period = f'{period_start}_{report_date}'
+        period_dir = self.project_root / 'data' / period
+        items = []
+        for group in selected_groups:
+            display_name = group['title']
+            store_dir = period_dir / display_name
+            output_path = store_dir / f'{display_name}_月度横向对比表.xlsx'
+            items.append({
+                'key': group['key'],
+                'name': display_name,
+                'summary_name': group['summary'],
+                'period': period,
+                'period_dir_exists': period_dir.exists(),
+                'store_dir_exists': store_dir.exists(),
+                'output_exists': output_path.exists(),
+                'store_dir': str(store_dir),
+                'output_path': str(output_path) if output_path.exists() else '',
+            })
+        return {
+            'report_date': report_date,
+            'period_start': period_start,
+            'period_end': report_date,
+            'period': period,
+            'period_dir': str(period_dir),
+            'has_existing': any(item['store_dir_exists'] for item in items),
+            'items': items,
+        }
+
+    def generate_monthly_summaries(self, groups: list[str], report_date: str | None = None, force_overwrite: bool = False) -> dict[str, Any]:
+        report_date = self._validate_report_date(report_date)
+        selected_groups = self._resolve_monthly_groups(groups)
+        period_start = f'{report_date[:4]}01'
+        period = f'{period_start}_{report_date}'
+        period_dir = self.project_root / 'data' / period
+        generated = []
+        errors = []
+
+        for group in selected_groups:
+            summary_name = group['summary']
+            display_name = group['title']
+            store_dir = period_dir / display_name
+            if store_dir.exists() and not force_overwrite:
+                raise DailyReportError(f'{display_name} 已存在月度横向汇总目录，请确认是否再次生成')
+            if store_dir.exists() and force_overwrite:
+                self._clear_monthly_store_dir(store_dir)
+            store_dir.mkdir(parents=True, exist_ok=True)
+            source_files = self._monthly_summary_source_files(report_date, summary_name)
+            if not source_files:
+                errors.append({
+                    'group': group['key'],
+                    'name': display_name,
+                    'message': f'未找到 {summary_name} 当月汇总表',
+                })
+                continue
+
+            copied_files = []
+            for _, source_path in source_files:
+                target_path = store_dir / source_path.name
+                try:
+                    shutil.copy2(source_path, target_path)
+                except PermissionError as exc:
+                    raise DailyReportError(f'{target_path.name} 文件正在被占用，请关闭已打开的 Excel 文件后重试') from exc
+                copied_files.append(str(target_path))
+
+            output_path = store_dir / f'{display_name}_月度横向对比表.xlsx'
+            try:
+                self._build_monthly_horizontal_summary(source_files, output_path, display_name, report_date)
+            except PermissionError as exc:
+                raise DailyReportError(f'{output_path.name} 文件正在被占用，请关闭已打开的 Excel 文件后重试') from exc
+            preview = self._summary_preview(output_path, display_name)
+            generated.append({
+                'key': group['key'],
+                'title': f'{display_name}{period_start[-4:]}-{report_date[-4:]}汇总',
+                'name': display_name,
+                'summary_name': summary_name,
+                'period': period,
+                'output_dir': str(store_dir),
+                'source_files': copied_files,
+                'summary': preview,
+            })
+
+        if not generated:
+            detail = '; '.join(item['message'] for item in errors) or '未生成月度横向汇总表'
+            raise DailyReportError(detail)
+
+        return {
+            'report_date': report_date,
+            'period_start': period_start,
+            'period_end': report_date,
+            'period': period,
+            'output_dir': str(period_dir),
+            'groups': generated,
+            'errors': errors,
+        }
+
+    def get_monthly_summary_image(self, period: str, group: str) -> tuple[bytes, str]:
+        if not re.fullmatch(r'\d{6}_\d{6}', str(period or '').strip()):
+            raise InvalidReportDateError(period)
+        group_config = self._resolve_preview_group(group)
+        display_name = group_config['title']
+        summary_path = self.project_root / 'data' / period / display_name / f'{display_name}_月度横向对比表.xlsx'
+        if not summary_path.exists():
+            raise DailyReportError(f'Monthly summary file does not exist: {summary_path.name}')
+        image_bytes = self._summary_image(summary_path)
+        return image_bytes, f'{display_name}_{period}_monthly.png'
+
+    def _clear_monthly_store_dir(self, path: Path) -> None:
+        if not path.exists():
+            return
+        for child in path.iterdir():
+            try:
+                if child.is_dir():
+                    self._remove_tree(child)
+                else:
+                    child.unlink()
+            except PermissionError:
+                # Some Windows accounts can overwrite files but cannot delete them; keep going and overwrite known outputs.
+                continue
+
+    def _remove_tree(self, path: Path) -> None:
+        def handle_remove_error(func, failed_path, exc_info):
+            os.chmod(failed_path, stat.S_IWRITE)
+            func(failed_path)
+
+        last_error = None
+        for attempt in range(4):
+            try:
+                shutil.rmtree(path, onerror=handle_remove_error)
+                return
+            except PermissionError as exc:
+                last_error = exc
+                time_module.sleep(0.35 * (attempt + 1))
+        if last_error:
+            raise last_error
+
+    def _resolve_monthly_groups(self, groups: list[str]) -> list[dict[str, Any]]:
+        resolved = []
+        seen = set()
+        for value in groups or []:
+            group = self._resolve_preview_group(str(value or '').strip())
+            if group['key'] not in seen:
+                resolved.append(group)
+                seen.add(group['key'])
+        if not resolved:
+            raise InvalidReportStoreError('请选择至少一个门店')
+        return resolved
+
+    def _monthly_summary_source_files(self, report_date: str, summary_name: str) -> list[tuple[str, Path]]:
+        data_dir = self.project_root / 'data'
+        if not data_dir.exists():
+            return []
+        period_start = f'{report_date[:4]}01'
+        suffix_template = self._summary_suffix
+        source_files = []
+        for day_dir in sorted(data_dir.iterdir(), key=lambda item: item.name):
+            day = day_dir.name
+            if not day_dir.is_dir() or not re.fullmatch(r'\d{6}', day):
+                continue
+            if day[:4] != report_date[:4] or day < period_start or day > report_date:
+                continue
+            summary_dir = self._data_child_dir(day, '汇总表')
+            suffix = suffix_template(day)
+            direct = summary_dir / f'{summary_name}{suffix}.xlsx'
+            if direct.exists():
+                source_files.append((day, direct))
+                continue
+            if summary_dir.exists():
+                matches = sorted(path for path in summary_dir.glob(f'{summary_name}*{suffix}.xlsx') if path.is_file() and not path.name.startswith('~$'))
+                if matches:
+                    source_files.append((day, matches[0]))
+        return source_files
+
+    def _build_monthly_horizontal_summary(
+        self,
+        source_files: list[tuple[str, Path]],
+        output_path: Path,
+        display_name: str,
+        report_date: str,
+    ) -> None:
+        template_path = source_files[-1][1]
+        workbook = load_workbook(template_path, read_only=False, data_only=True)
+        try:
+            sheet = workbook.active
+            self._expand_merged_summary_rows(sheet)
+            source_values = [self._summary_column_values(path) for _, path in source_files]
+            max_rows = max([sheet.max_row or 1] + [len(values) for values in source_values])
+            if sheet.max_column > 2 + len(source_files):
+                sheet.delete_cols(3 + len(source_files), sheet.max_column - 2 - len(source_files))
+
+            report_date_text = datetime.strptime(report_date, '%y%m%d').strftime('%Y-%m-%d')
+            for row_index in range(1, max_rows + 1):
+                label_cell = sheet.cell(row=row_index, column=1)
+                label_text = str(label_cell.value or '')
+                if label_text.startswith('MTD'):
+                    label_cell.value = f'MTD (截止：{report_date_text})'
+                elif label_text.startswith('Daily Report'):
+                    label_cell.value = f'Daily Report ({report_date_text})'
+
+                source_style_cell = sheet.cell(row=row_index, column=3)
+                for col_offset, (day, _) in enumerate(source_files):
+                    target_cell = sheet.cell(row=row_index, column=3 + col_offset)
+                    self._copy_cell_style(source_style_cell, target_cell)
+                    if row_index == 1:
+                        target_cell.value = f'{display_name}{day[-4:]}'
+                        continue
+                    values = source_values[col_offset]
+                    if row_index - 1 < len(values):
+                        value, number_format = values[row_index - 1]
+                        target_cell.value = value
+                        if number_format:
+                            target_cell.number_format = number_format
+
+            for col_index in range(3, 3 + len(source_files)):
+                letter = get_column_letter(col_index)
+                sheet.column_dimensions[letter].width = max(12, sheet.column_dimensions['C'].width or 12)
+
+            workbook.save(output_path)
+        finally:
+            workbook.close()
+
+    def _expand_merged_summary_rows(self, sheet) -> None:
+        for merged_range in list(sheet.merged_cells.ranges):
+            if merged_range.max_col <= 2:
+                continue
+            source_cell = sheet.cell(row=merged_range.min_row, column=merged_range.min_col)
+            style_source = self._cell_style_snapshot(source_cell)
+            sheet.unmerge_cells(str(merged_range))
+            for row_index in range(merged_range.min_row, merged_range.max_row + 1):
+                for col_index in range(merged_range.min_col, merged_range.max_col + 1):
+                    self._apply_cell_style_snapshot(sheet.cell(row=row_index, column=col_index), style_source)
+
+    def _summary_column_values(self, path: Path) -> list[tuple[Any, str]]:
+        workbook = load_workbook(path, read_only=False, data_only=True)
+        try:
+            sheet = workbook.active
+            return [(sheet.cell(row=row_index, column=3).value, str(sheet.cell(row=row_index, column=3).number_format or '')) for row_index in range(1, sheet.max_row + 1)]
+        finally:
+            workbook.close()
+
+    def _copy_cell_style(self, source, target) -> None:
+        style_snapshot = self._cell_style_snapshot(source)
+        self._apply_cell_style_snapshot(target, style_snapshot)
+
+    def _cell_style_snapshot(self, cell) -> dict[str, Any]:
+        return {
+            'style': copy(cell._style),
+            'font': copy(cell.font),
+            'fill': copy(cell.fill),
+            'border': copy(cell.border),
+            'alignment': copy(cell.alignment),
+            'protection': copy(cell.protection),
+            'number_format': cell.number_format,
+        }
+
+    def _apply_cell_style_snapshot(self, cell, snapshot: dict[str, Any]) -> None:
+        cell._style = copy(snapshot['style'])
+        cell.font = copy(snapshot['font'])
+        cell.fill = copy(snapshot['fill'])
+        cell.border = copy(snapshot['border'])
+        cell.alignment = copy(snapshot['alignment'])
+        cell.protection = copy(snapshot['protection'])
+        cell.number_format = snapshot['number_format']
+
+    def get_all_store_summary_status(self, report_date: str | None = None) -> dict[str, Any]:
+        report_date = self._validate_report_date(report_date)
+        summary_dir = self._data_child_dir(report_date, '汇总表')
+        output_path = summary_dir / f'{report_date[-4:]}全门店机器人汇总表.xlsx'
+        return {
+            'report_date': report_date,
+            'filename': output_path.name,
+            'exists': output_path.exists(),
+            'output_dir': str(summary_dir),
+            'output_path': str(output_path) if output_path.exists() else '',
+        }
+
+    def generate_all_store_summary(self, report_date: str | None = None, force_overwrite: bool = False) -> dict[str, Any]:
+        report_date = self._validate_report_date(report_date)
+        summary_dir = self._data_child_dir(report_date, '汇总表')
+        source_files = self._all_store_summary_source_files(report_date)
+        if not source_files:
+            raise DailyReportError(f'{report_date} 未找到可汇总的门店汇总表')
+        output_path = summary_dir / f'{report_date[-4:]}全门店机器人汇总表.xlsx'
+        if output_path.exists() and not force_overwrite:
+            raise AllStoreSummaryExistsError(f'已有{output_path.name}，请确认是否重新生成')
+        try:
+            self._build_all_store_summary(source_files, output_path, report_date)
+        except PermissionError as exc:
+            raise DailyReportError(f'{output_path.name} 文件正在被占用，请关闭已打开的 Excel 文件后重试') from exc
+        preview = self._summary_preview(output_path, f'{report_date[-4:]}全门店汇总')
+        return {
+            'report_date': report_date,
+            'title': f'{report_date[-4:]}全门店汇总',
+            'output_dir': str(summary_dir),
+            'source_files': [str(path) for path in source_files],
+            'summary': preview,
+        }
+
+    def get_all_store_summary_image(self, report_date: str | None = None) -> tuple[bytes, str]:
+        report_date = self._validate_report_date(report_date)
+        summary_dir = self._data_child_dir(report_date, '汇总表')
+        summary_path = summary_dir / f'{report_date[-4:]}全门店机器人汇总表.xlsx'
+        if not summary_path.exists():
+            raise DailyReportError(f'All-store summary file does not exist: {summary_path.name}')
+        return self._summary_image(summary_path), f'all_store_{report_date}.png'
+
+    def _all_store_summary_source_files(self, report_date: str) -> list[Path]:
+        summary_dir = self._data_child_dir(report_date, '汇总表')
+        if not summary_dir.exists():
+            return []
+        suffix = self._summary_suffix(report_date)
+        files = []
+        for path in sorted(summary_dir.glob(f'*{suffix}.xlsx')):
+            if path.name.startswith('~$') or '全门店机器人汇总表' in path.name:
+                continue
+            files.append(path)
+        return files
+
+    def _build_all_store_summary(self, source_files: list[Path], output_path: Path, report_date: str) -> None:
+        template_path = max(source_files, key=lambda path: self._worksheet_dimensions(path)[0])
+        workbook = load_workbook(template_path, read_only=False, data_only=True)
+        source_workbooks = []
+        try:
+            sheet = workbook.active
+            template_styles = {
+                row_index: self._cell_style_snapshot(sheet.cell(row=row_index, column=3))
+                for row_index in range(1, sheet.max_row + 1)
+            }
+            template_width = sheet.column_dimensions['C'].width or 12
+            if sheet.max_column > 2:
+                sheet.delete_cols(3, sheet.max_column - 2)
+            report_date_text = datetime.strptime(report_date, '%y%m%d').strftime('%Y-%m-%d')
+            for row_index in range(1, sheet.max_row + 1):
+                label_cell = sheet.cell(row=row_index, column=1)
+                label_text = str(label_cell.value or '')
+                if label_text.startswith('MTD'):
+                    label_cell.value = f'MTD (截止：{report_date_text})'
+                elif label_text.startswith('Daily Report'):
+                    label_cell.value = f'Daily Report ({report_date_text})'
+
+            target_row_keys = self._summary_row_keys(sheet)
+            target_col = 3
+            for source_path in source_files:
+                source_wb = load_workbook(source_path, read_only=False, data_only=True)
+                source_workbooks.append(source_wb)
+                source_sheet = source_wb.active
+                source_row_keys = self._summary_row_keys(source_sheet)
+                source_rows_by_key = {key: row_index for row_index, key in source_row_keys.items()}
+                for source_col in range(3, source_sheet.max_column + 1):
+                    header = source_sheet.cell(row=1, column=source_col).value
+                    if header in (None, '') and not any(source_sheet.cell(row=row_index, column=source_col).value not in (None, '') for row_index in range(2, source_sheet.max_row + 1)):
+                        continue
+                    for target_row in range(1, sheet.max_row + 1):
+                        target_cell = sheet.cell(row=target_row, column=target_col)
+                        if target_row in template_styles:
+                            self._apply_cell_style_snapshot(target_cell, template_styles[target_row])
+                        source_row = source_rows_by_key.get(target_row_keys.get(target_row))
+                        if source_row is None:
+                            target_cell.value = None
+                            continue
+                        source_cell = source_sheet.cell(row=source_row, column=source_col)
+                        self._copy_cell_style(source_cell, target_cell)
+                        target_cell.value = source_cell.value
+                    target_letter = get_column_letter(target_col)
+                    sheet.column_dimensions[target_letter].width = source_sheet.column_dimensions[get_column_letter(source_col)].width or template_width
+                    target_col += 1
+            workbook.save(output_path)
+        finally:
+            for source_wb in source_workbooks:
+                source_wb.close()
+            workbook.close()
+
+    def _summary_row_keys(self, sheet) -> dict[int, tuple[str, str, int]]:
+        row_keys: dict[int, tuple[str, str, int]] = {}
+        section = 'sheet'
+        counts: dict[tuple[str, str], int] = {}
+        for row_index in range(1, sheet.max_row + 1):
+            label = str(sheet.cell(row=row_index, column=1).value or '').strip()
+            if row_index == 1:
+                row_keys[row_index] = ('sheet', 'header', 1)
+                continue
+            if label.startswith('MTD'):
+                section = 'mtd'
+                counts = {}
+                row_keys[row_index] = (section, 'section', 1)
+                continue
+            if label.startswith('Daily Report'):
+                section = 'daily'
+                counts = {}
+                row_keys[row_index] = (section, 'section', 1)
+                continue
+
+            metric = self._summary_metric_key(label)
+            if not metric:
+                continue
+            count_key = (section, metric)
+            counts[count_key] = counts.get(count_key, 0) + 1
+            row_keys[row_index] = (section, metric, counts[count_key])
+        return row_keys
+
+    def _summary_metric_key(self, value: str) -> str:
+        text = str(value or '').strip()
+        text = re.sub(r'[（(].*?[）)]', '', text)
+        text = re.sub(r'\s+', '', text)
+        return text
+
+    def _worksheet_dimensions(self, path: Path) -> tuple[int, int]:
+        workbook = load_workbook(path, read_only=True, data_only=True)
+        try:
+            sheet = workbook.active
+            return sheet.max_row or 1, sheet.max_column or 1
+        finally:
+            workbook.close()
 
     def get_raw_files_status(self, report_date: str | None = None, store: str = 'all') -> dict[str, Any]:
         report_date = self._validate_report_date(report_date)

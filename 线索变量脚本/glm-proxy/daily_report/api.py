@@ -46,7 +46,98 @@ def create_router(service: DailyReportService) -> APIRouter:
             return Response(
                 content=image_bytes,
                 media_type='image/png',
-                headers={'Content-Disposition': f'inline; filename="{filename}"'},
+                headers={'Content-Disposition': 'inline; filename="summary.png"'},
+            )
+        except (InvalidReportDateError, InvalidReportStoreError, InvalidReportGroupError) as exc:
+            return error_response(exc.code, exc.message, exc.detail, 422)
+        except DailyReportError as exc:
+            return error_response(exc.code, exc.message, exc.detail, 400)
+
+    @router.get('/monthly-summary/stores')
+    async def monthly_summary_stores():
+        return {'stores': service.list_monthly_summary_stores()}
+
+    @router.post('/monthly-summary/status')
+    async def monthly_summary_status(payload: dict):
+        try:
+            groups = payload.get('groups') or []
+            if isinstance(groups, str):
+                groups = [groups]
+            return service.get_monthly_summary_status(
+                groups=[str(item).strip() for item in groups if str(item).strip()],
+                report_date=str(payload.get('report_date') or '').strip() or None,
+            )
+        except (InvalidReportDateError, InvalidReportStoreError, InvalidReportGroupError) as exc:
+            return error_response(exc.code, exc.message, exc.detail, 422)
+        except DailyReportError as exc:
+            return error_response(exc.code, exc.message, exc.detail, 400)
+    @router.post('/monthly-summary')
+    async def monthly_summary(payload: dict):
+        try:
+            groups = payload.get('groups') or []
+            if isinstance(groups, str):
+                groups = [groups]
+            return service.generate_monthly_summaries(
+                groups=[str(item).strip() for item in groups if str(item).strip()],
+                report_date=str(payload.get('report_date') or '').strip() or None,
+                force_overwrite=bool(payload.get('force_overwrite') or False),
+            )
+        except (InvalidReportDateError, InvalidReportStoreError, InvalidReportGroupError) as exc:
+            return error_response(exc.code, exc.message, exc.detail, 422)
+        except DailyReportError as exc:
+            return error_response(exc.code, exc.message, exc.detail, 400)
+
+    @router.get('/monthly-summary-image')
+    async def monthly_summary_image(period: str = '', group: str = ''):
+        try:
+            image_bytes, filename = service.get_monthly_summary_image(
+                period=str(period or '').strip(),
+                group=str(group or '').strip(),
+            )
+            return Response(
+                content=image_bytes,
+                media_type='image/png',
+                headers={'Content-Disposition': 'inline; filename="monthly_summary.png"'},
+            )
+        except (InvalidReportDateError, InvalidReportStoreError, InvalidReportGroupError) as exc:
+            return error_response(exc.code, exc.message, exc.detail, 422)
+        except DailyReportError as exc:
+            return error_response(exc.code, exc.message, exc.detail, 400)
+    @router.get('/all-store-summary/status')
+    async def all_store_summary_status(report_date: str = ''):
+        try:
+            return service.get_all_store_summary_status(
+                report_date=str(report_date or '').strip() or None,
+            )
+        except (InvalidReportDateError, InvalidReportStoreError, InvalidReportGroupError) as exc:
+            return error_response(exc.code, exc.message, exc.detail, 422)
+        except DailyReportError as exc:
+            return error_response(exc.code, exc.message, exc.detail, 400)
+
+    @router.post('/all-store-summary')
+    async def all_store_summary(payload: dict):
+        try:
+            return service.generate_all_store_summary(
+                report_date=str(payload.get('report_date') or '').strip() or None,
+                force_overwrite=bool(payload.get('force_overwrite') or False),
+            )
+        except AllStoreSummaryExistsError as exc:
+            return error_response(exc.code, exc.message, exc.detail, 409)
+        except (InvalidReportDateError, InvalidReportStoreError, InvalidReportGroupError) as exc:
+            return error_response(exc.code, exc.message, exc.detail, 422)
+        except DailyReportError as exc:
+            return error_response(exc.code, exc.message, exc.detail, 400)
+
+    @router.get('/all-store-summary-image')
+    async def all_store_summary_image(report_date: str = ''):
+        try:
+            image_bytes, filename = service.get_all_store_summary_image(
+                report_date=str(report_date or '').strip() or None,
+            )
+            return Response(
+                content=image_bytes,
+                media_type='image/png',
+                headers={'Content-Disposition': 'inline; filename="all_store_summary.png"'},
             )
         except (InvalidReportDateError, InvalidReportStoreError, InvalidReportGroupError) as exc:
             return error_response(exc.code, exc.message, exc.detail, 422)

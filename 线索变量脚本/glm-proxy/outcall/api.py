@@ -30,6 +30,7 @@ def create_router(service: OutcallService) -> APIRouter:
         environment = str(payload.get('environment') or '')
         mode = str(payload.get('mode') or '')
         split_job_id = str(payload.get('split_job_id') or '')
+        force_restart = bool(payload.get('force_restart') or False)
         if not store_code:
             return error_response('MISSING_STORE_CODE', 'store_code is required', status_code=422)
         if not environment:
@@ -39,7 +40,7 @@ def create_router(service: OutcallService) -> APIRouter:
         if not split_job_id:
             return error_response('MISSING_SPLIT_JOB_ID', 'split_job_id is required', status_code=422)
         try:
-            job = service.start_job(store_code, environment, mode, split_job_id)
+            job = service.start_job(store_code, environment, mode, split_job_id, force_restart=force_restart)
             return JSONResponse(job_to_dict(job), status_code=202)
         except (InvalidOutcallEnvironmentError, InvalidOutcallModeError) as exc:
             return error_response(exc.code, exc.message, exc.detail, 422)

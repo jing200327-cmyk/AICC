@@ -72,14 +72,14 @@ class OutcallService:
         self.tasks: dict[str, asyncio.Task] = {}
         self.file_signatures: dict[str, dict[str, tuple[tuple[str, ...], ...]]] = {}
 
-    def start_job(self, store_code: str, environment: str, mode: str, split_job_id: str) -> OutcallJob:
+    def start_job(self, store_code: str, environment: str, mode: str, split_job_id: str, force_restart: bool = False) -> OutcallJob:
         environment = self._validate_environment(environment)
         mode = self._validate_mode(mode)
         split_job = self._get_split_job(store_code, split_job_id)
         tenant, config, excel_cls, status_cls, process_tenant = self._load_tenant(split_job.store_name, environment)
         files = self._select_files(split_job, tenant.name, mode, excel_cls)
         file_signatures = {file.file_path.name: self._first_rows_signature(file.file_path) for _, file in files}
-        if environment == 'prod':
+        if environment == 'prod' and not force_restart:
             self._assert_no_duplicate_outcall_files(tenant.name, files, file_signatures)
 
         now = datetime.now().isoformat()

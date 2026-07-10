@@ -133,8 +133,14 @@ async def upload_file(
             result = json.loads(text)
             _save_result(tenant.name, "upload", result)
 
+            if resp.status != 200 or result.get("code") != 200:
+                logger.error(f"[{tenant.name}] 文件上传失败: {result.get('msg') or result}")
+                return None
+
             fid = result.get("data") or result.get("fid")
-            if fid:
+            if isinstance(fid, str):
+                fid = fid.strip()
+            if fid and "\n" not in str(fid) and "<Error>" not in str(fid):
                 logger.info(f"[{tenant.name}] 文件上传成功, fid={fid}")
                 return str(fid)
             logger.error(f"[{tenant.name}] 文件上传未获取到 fid: {result}")
