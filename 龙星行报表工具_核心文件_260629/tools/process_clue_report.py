@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
 import argparse
@@ -299,10 +299,19 @@ def build_monthly_stats_by_group(
         if not group_name or group_name == 'nan':
             continue
         group_calls = df_call_mtd[df_call_mtd[group_by_call_field].astype(str).str.strip() == group_name]
+        call_status_col = _col(group_calls, '通话状态')
+        connected_ids = set(
+            group_calls.loc[
+                group_calls[call_status_col].astype(str).str.contains('已接通', na=False),
+                '线索ID',
+            ]
+        )
+        connected_mask = group_df['线索ID'].isin(connected_ids)
+        effective_mask = group_df[clue_status_col].astype(str).str.contains('有效', na=False)
         stats[group_name] = {
             "累计线索量": len(group_df),
-            "累计接通量": int(group_df[talk_status_col].astype(str).str.contains('已接通', na=False).sum()),
-            "累计有效线索量": int(group_df[clue_status_col].astype(str).str.contains('有效', na=False).sum()),
+            "累计接通量": int(connected_mask.sum()),
+            "累计有效线索量": int((connected_mask & effective_mask).sum()),
             "累计呼叫通次": int(len(group_calls)),
         }
     return stats

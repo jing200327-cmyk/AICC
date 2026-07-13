@@ -3,14 +3,24 @@
 import tempfile
 from dataclasses import asdict
 from pathlib import Path
+from typing import Any
 
 from fastapi import APIRouter, File, Form, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 
-from .service import EmptyFileError, FileTooLargeError, InvalidStoreCodeError, LeadImportService, MAX_UPLOAD_SIZE, UnsupportedFileTypeError
+from .service import (
+    EmptyFileError,
+    FileTooLargeError,
+    InvalidSheetNameError,
+    InvalidStoreCodeError,
+    LeadImportService,
+    MAX_UPLOAD_SIZE,
+    SheetSelectionRequiredError,
+    UnsupportedFileTypeError,
+)
 
 
-def error_response(code: str, message: str, detail: str = "", status_code: int = 400) -> JSONResponse:
+def error_response(code: str, message: str, detail: Any = "", status_code: int = 400) -> JSONResponse:
     return JSONResponse({"error": {"code": code, "message": message, "detail": detail}}, status_code=status_code)
 
 
@@ -33,6 +43,7 @@ def create_router(service: LeadImportService) -> APIRouter:
         file: UploadFile = File(...),
         remark: str = Form(""),
         force_store_code: str | None = Form(None),
+        sheet_name: str | None = Form(None),
     ):
         if not file.filename:
             return error_response("EMPTY_FILE", "Uploaded file is empty", status_code=400)
@@ -60,7 +71,13 @@ def create_router(service: LeadImportService) -> APIRouter:
             return error_response("EMPTY_FILE", "Uploaded file is empty", status_code=400)
 
         try:
-            job = service.create_job_from_path(tmp_path, file.filename, remark=remark, force_store_code=force_store_code)
+            job = service.create_job_from_path(
+                tmp_path,
+                file.filename,
+                remark=remark,
+                force_store_code=force_store_code,
+                sheet_name=sheet_name,
+            )
             return {"job_id": job.job_id, "status": job.status, "message": _message_for_status(job.status)}
         except UnsupportedFileTypeError as exc:
             return error_response(exc.code, exc.message, status_code=400)
@@ -69,6 +86,10 @@ def create_router(service: LeadImportService) -> APIRouter:
         except FileTooLargeError as exc:
             return error_response(exc.code, exc.message, status_code=413)
         except InvalidStoreCodeError as exc:
+            return error_response(exc.code, exc.message, status_code=422)
+        except SheetSelectionRequiredError as exc:
+            return error_response(exc.code, exc.message, {"sheet_names": exc.sheet_names}, status_code=409)
+        except InvalidSheetNameError as exc:
             return error_response(exc.code, exc.message, status_code=422)
         finally:
             tmp_path.unlink(missing_ok=True)

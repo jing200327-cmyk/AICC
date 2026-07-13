@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse, Response
 
@@ -57,6 +59,10 @@ def create_router(service: DailyReportService) -> APIRouter:
     async def monthly_summary_stores():
         return {'stores': service.list_monthly_summary_stores()}
 
+    @router.get('/monthly-summary/months')
+    async def monthly_summary_months():
+        return {'months': service.list_monthly_summary_months()}
+
     @router.post('/monthly-summary/status')
     async def monthly_summary_status(payload: dict):
         try:
@@ -66,6 +72,7 @@ def create_router(service: DailyReportService) -> APIRouter:
             return service.get_monthly_summary_status(
                 groups=[str(item).strip() for item in groups if str(item).strip()],
                 report_date=str(payload.get('report_date') or '').strip() or None,
+                target_month=str(payload.get('target_month') or '').strip() or None,
             )
         except (InvalidReportDateError, InvalidReportStoreError, InvalidReportGroupError) as exc:
             return error_response(exc.code, exc.message, exc.detail, 422)
@@ -77,10 +84,12 @@ def create_router(service: DailyReportService) -> APIRouter:
             groups = payload.get('groups') or []
             if isinstance(groups, str):
                 groups = [groups]
-            return service.generate_monthly_summaries(
+            return await asyncio.to_thread(
+                service.generate_monthly_summaries,
                 groups=[str(item).strip() for item in groups if str(item).strip()],
                 report_date=str(payload.get('report_date') or '').strip() or None,
                 force_overwrite=bool(payload.get('force_overwrite') or False),
+                target_month=str(payload.get('target_month') or '').strip() or None,
             )
         except (InvalidReportDateError, InvalidReportStoreError, InvalidReportGroupError) as exc:
             return error_response(exc.code, exc.message, exc.detail, 422)
@@ -88,11 +97,12 @@ def create_router(service: DailyReportService) -> APIRouter:
             return error_response(exc.code, exc.message, exc.detail, 400)
 
     @router.get('/monthly-summary-image')
-    async def monthly_summary_image(period: str = '', group: str = ''):
+    async def monthly_summary_image(period: str = '', group: str = '', output_folder: str = ''):
         try:
             image_bytes, filename = service.get_monthly_summary_image(
                 period=str(period or '').strip(),
                 group=str(group or '').strip(),
+                output_folder=str(output_folder or '').strip(),
             )
             return Response(
                 content=image_bytes,

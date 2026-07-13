@@ -926,8 +926,8 @@
 
     .monthly-summary-wrap .summary-table td,
     .monthly-summary-wrap .summary-table th {
-      font-size: 13px !important;
-      line-height: 1.45 !important;
+      font-size: 14px !important;
+      line-height: 1.5 !important;
     }
 
     @keyframes monthlySummaryPulse {
@@ -1454,7 +1454,7 @@
             <div class="toolbar">
               <button class="btn primary" id="generateDaily" type="button">生成今日龙星行日报</button>
               <button class="btn" id="generateSpecificDaily" type="button">生成特定日期日报</button>
-              <button class="btn" id="generateMonthlySummary" type="button">生成指定门店当月横向汇总表</button>
+              <button class="btn" id="generateMonthlySummary" type="button">生成指定门店月度横向汇总表</button>
               <button class="btn" id="generateAllStoreSummary" type="button">生成指定日期全门店汇总表</button>
             </div>
           </div>
@@ -1683,6 +1683,26 @@
   </section>
 
 
+  <div class="modal-backdrop" id="leadSheetModal" aria-hidden="true">
+    <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="leadSheetModalTitle">
+      <div class="modal-head">
+        <h3 id="leadSheetModalTitle">选择要处理的工作表</h3>
+        <button class="btn" id="leadSheetModalClose" type="button">关闭</button>
+      </div>
+      <div class="modal-body">
+        <p class="hint" id="leadSheetFileHint">检测到 Excel 中包含多个工作表，请选择其中一个继续处理。</p>
+        <div class="field">
+          <label for="leadSheetSelect">Excel 工作表</label>
+          <select class="select" id="leadSheetSelect" size="6"></select>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn" id="leadSheetModalCancel" type="button">取消</button>
+        <button class="btn primary" id="leadSheetModalConfirm" type="button">确认并校验</button>
+      </div>
+    </div>
+  </div>
+
   <div class="modal-backdrop" id="dailyModal" aria-hidden="true">
     <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="dailyModalTitle">
       <div class="modal-head">
@@ -1710,13 +1730,20 @@
   <div class="modal-backdrop" id="monthlySummaryModal" aria-hidden="true">
     <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="monthlySummaryModalTitle">
       <div class="modal-head">
-        <h3 id="monthlySummaryModalTitle">生成指定门店当月横向汇总表</h3>
+        <h3 id="monthlySummaryModalTitle">生成指定门店月度横向汇总表</h3>
         <button class="btn" id="monthlySummaryModalClose" type="button">关闭</button>
       </div>
       <div class="modal-body">
         <div class="field">
           <label for="monthlySummaryStoreSelect">门店</label>
           <select class="select" id="monthlySummaryStoreSelect" multiple size="8"></select>
+        </div>
+        <div class="field">
+          <label for="monthlySummaryMonthSelect">统计月份</label>
+          <select class="select" id="monthlySummaryMonthSelect">
+            <option value="">正在读取月份...</option>
+          </select>
+          <span class="hint">历史月份将检查整月每日汇总；缺失日期会自动补拉线索明细和话单后再生成。</span>
         </div>
       </div>
       <div class="modal-foot">
@@ -1797,6 +1824,7 @@
     let dailyPollTimer = null;
     let dailyStoresLoaded = false;
     let monthlySummaryStoresLoaded = false;
+    let monthlySummaryMonthsLoaded = false;
     let monthlySummaryResult = null;
     let allStoreSummaryResult = null;
     let taskRecordCache = [];
@@ -2126,6 +2154,49 @@
       '骏马众诚': '线索变量脚本/线索变量脚本/骏马众诚.py',
     };
     let leadImportJobDetail = null;
+    let leadSheetModalResolver = null;
+
+    function closeLeadSheetModal(selectedSheet = null) {
+      const modal = document.getElementById('leadSheetModal');
+      modal.classList.remove('open');
+      modal.setAttribute('aria-hidden', 'true');
+      if (leadSheetModalResolver) {
+        const resolve = leadSheetModalResolver;
+        leadSheetModalResolver = null;
+        resolve(selectedSheet);
+      }
+    }
+
+    function selectLeadSheet(sheetNames, filename) {
+      const modal = document.getElementById('leadSheetModal');
+      const select = document.getElementById('leadSheetSelect');
+      document.getElementById('leadSheetFileHint').textContent =
+        `文件“${filename}”包含 ${sheetNames.length} 个工作表，请选择本次要处理的一个。`;
+      select.innerHTML = sheetNames
+        .map(name => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`)
+        .join('');
+      select.selectedIndex = 0;
+      modal.classList.add('open');
+      modal.setAttribute('aria-hidden', 'false');
+      window.setTimeout(() => select.focus(), 0);
+      return new Promise(resolve => {
+        leadSheetModalResolver = resolve;
+      });
+    }
+
+    document.getElementById('leadSheetModalClose').addEventListener('click', () => closeLeadSheetModal());
+    document.getElementById('leadSheetModalCancel').addEventListener('click', () => closeLeadSheetModal());
+    document.getElementById('leadSheetModalConfirm').addEventListener('click', () => {
+      closeLeadSheetModal(document.getElementById('leadSheetSelect').value || null);
+    });
+    document.getElementById('leadSheetModal').addEventListener('click', event => {
+      if (event.target.id === 'leadSheetModal') closeLeadSheetModal();
+    });
+    document.addEventListener('keydown', event => {
+      if (event.key === 'Escape' && document.getElementById('leadSheetModal').classList.contains('open')) {
+        closeLeadSheetModal();
+      }
+    });
 
     async function loadLeadStores() {
       try {
@@ -2197,6 +2268,8 @@
       const detected = detail.detected_store;
       const inputPath = detail.input_file?.saved_path || '未返回保存路径';
       const scriptPath = leadStoreScriptMap[selectedStore] || (detail.logs || []).find(line => line.includes('.py')) || '脚本由门店注册表匹配';
+      const selectedSheetLog = (detail.logs || []).find(line => line.startsWith('Selected sheet: '));
+      const selectedSheet = selectedSheetLog ? selectedSheetLog.replace('Selected sheet: ', '') : '';
       if (detail.status === 'completed') {
         setLeadStatus('status ok', '校验通过');
         setLeadOutputState('status warn', 'TXT 已生成，待人工确认读取');
@@ -2206,7 +2279,7 @@
       } else {
         setLeadStatus('status warn', detail.status);
       }
-      document.getElementById('detectedStore').textContent = `选择门店：${selectedStore}；执行门店：${detected?.store_name || selectedStore}；匹配方式：${(detected?.matched_by || []).join(' / ') || 'force_store_code'}；输入文件：${inputPath}；${scriptPath}`;
+      document.getElementById('detectedStore').textContent = `选择门店：${selectedStore}；执行门店：${detected?.store_name || selectedStore}；工作表：${selectedSheet || 'CSV / 默认'}；匹配方式：${(detected?.matched_by || []).join(' / ') || 'force_store_code'}；输入文件：${inputPath}；${scriptPath}`;
     }
 
     document.getElementById('leadStore').addEventListener('change', () => {
@@ -2218,6 +2291,40 @@
       setLeadStatus('status warn', '待校验');
       resetLeadResult();
     });
+
+    async function submitLeadImport(file, store, storeCode, sheetName = null) {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('force_store_code', storeCode);
+      formData.append('remark', `AICC 前端线索导入：${store}`);
+      if (sheetName) formData.append('sheet_name', sheetName);
+
+      const createResponse = await fetch(leadApiBaseUrl, { method: 'POST', body: formData });
+      const createBody = await parseApiResponse(createResponse);
+      if (
+        createResponse.status === 409 &&
+        createBody.error?.code === 'SHEET_SELECTION_REQUIRED' &&
+        !sheetName
+      ) {
+        const sheetNames = createBody.error?.detail?.sheet_names || [];
+        if (!sheetNames.length) throw createBody.error;
+        setLeadStatus('status warn', '请选择工作表');
+        document.getElementById('detectedStore').textContent =
+          `检测到 ${file.name} 包含多个工作表，请选择其中一个继续校验。`;
+        const selectedSheet = await selectLeadSheet(sheetNames, file.name);
+        if (!selectedSheet) return null;
+        setLeadStatus('status info', '上传处理中');
+        document.getElementById('detectedStore').textContent =
+          `正在按【${store}】脚本处理工作表【${selectedSheet}】...`;
+        return submitLeadImport(file, store, storeCode, selectedSheet);
+      }
+      if (!createResponse.ok) throw createBody.error || createBody;
+
+      const detailResponse = await fetch(`${leadApiBaseUrl}/jobs/${createBody.job_id}`);
+      const detailBody = await parseApiResponse(detailResponse);
+      if (!detailResponse.ok) throw detailBody.error || detailBody;
+      return detailBody;
+    }
 
     document.getElementById('validateLead').addEventListener('click', async () => {
       const store = document.getElementById('leadStore').value;
@@ -2238,21 +2345,17 @@
         document.getElementById('detectedStore').textContent = '仅支持 .xlsx / .xls / .csv 文件。';
         return;
       }
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('force_store_code', storeCode);
-      formData.append('remark', `AICC 前端线索导入：${store}`);
       setLeadStatus('status info', '上传处理中');
       setLeadOutputState('status gray', '未读取');
       document.getElementById('detectedStore').textContent = `正在按【${store}】脚本处理 ${file.name}...`;
       document.getElementById('txtReader').textContent = '文件已提交处理。校验完成后点击“确认生成 TXT”读取右侧内容。';
       try {
-        const createResponse = await fetch(leadApiBaseUrl, { method: 'POST', body: formData });
-        const createBody = await parseApiResponse(createResponse);
-        if (!createResponse.ok) throw createBody.error || createBody;
-        const detailResponse = await fetch(`${leadApiBaseUrl}/jobs/${createBody.job_id}`);
-        const detailBody = await parseApiResponse(detailResponse);
-        if (!detailResponse.ok) throw detailBody.error || detailBody;
+        const detailBody = await submitLeadImport(file, store, storeCode);
+        if (!detailBody) {
+          setLeadStatus('status warn', '已取消选择');
+          document.getElementById('detectedStore').textContent = '已取消工作表选择，本次未处理文件。';
+          return;
+        }
         applyLeadDetail(detailBody, store);
       } catch (error) {
         leadImportJobDetail = null;
@@ -2587,13 +2690,16 @@
       const body = summary.html
         ? `<div class="summary-table-wrap monthly-summary-wrap" id="${targetId}">${summary.html}</div>`
         : `<div class="report-empty" id="${targetId}">未生成该门店月度横向汇总表。</div>`;
+      const supplementedText = (group.supplemented_dates || []).length
+        ? `已补齐 ${group.supplemented_dates.length} 天`
+        : '无需补数';
       return `
         <section class="monthly-summary-group" data-monthly-summary-group="${escapeHtml(group.key || '')}">
           <div class="report-group-head">
             <h3>${escapeHtml(title)}</h3>
             <div class="toolbar">
-              <span class="hint">${escapeHtml(group.period || '')}</span>
-              <button class="btn copy-btn" type="button" data-copy-monthly-image-group="${escapeHtml(group.key || '')}" data-copy-monthly-period="${escapeHtml(group.period || '')}" data-copy-target="${targetId}">复制截图</button>
+              <span class="hint">${escapeHtml(group.month_label || '')} · ${escapeHtml(supplementedText)} · ${escapeHtml(group.period || '')}</span>
+              <button class="btn copy-btn" type="button" data-copy-monthly-image-group="${escapeHtml(group.key || '')}" data-copy-monthly-period="${escapeHtml(group.period || '')}" data-copy-monthly-output-folder="${escapeHtml(group.output_folder || '')}" data-copy-target="${targetId}">复制截图</button>
             </div>
           </div>
           <div class="report-stack">${body}</div>
@@ -2605,7 +2711,11 @@
       const container = document.getElementById('monthlySummaryBlocks');
       const groups = data.groups || [];
       if (!groups.length) {
-        container.innerHTML = '<div class="report-empty">未生成月度横向汇总表。</div>';
+        const skipped = data.skipped || [];
+        const message = skipped.length
+          ? skipped.map(item => item.reason).join('；')
+          : '未生成月度横向汇总表。';
+        container.innerHTML = `<div class="report-empty">${escapeHtml(message)}</div>`;
         return;
       }
       container.innerHTML = groups.map((group, index) => monthlySummaryPanel(group, index)).join('');
@@ -2633,10 +2743,29 @@
       }
     }
 
+    async function loadMonthlySummaryMonths() {
+      if (monthlySummaryMonthsLoaded) return;
+      const select = document.getElementById('monthlySummaryMonthSelect');
+      select.innerHTML = '<option value="">正在读取月份...</option>';
+      try {
+        const response = await fetch(`${dailyApiBaseUrl}/monthly-summary/months`);
+        const body = await parseApiResponse(response);
+        if (!response.ok) throw body.error || body;
+        select.innerHTML = (body.months || []).map(month =>
+          `<option value="${escapeHtml(month.value)}" data-period-start="${escapeHtml(month.period_start)}" data-period-end="${escapeHtml(month.period_end)}">${escapeHtml(month.label)}</option>`
+        ).join('');
+        monthlySummaryMonthsLoaded = true;
+      } catch (error) {
+        select.innerHTML = '';
+        document.getElementById('dailyLog').textContent = formatSplitError(error);
+      }
+    }
+
     function openMonthlySummaryModal() {
       document.getElementById('monthlySummaryModal').classList.add('open');
       document.getElementById('monthlySummaryModal').setAttribute('aria-hidden', 'false');
       loadMonthlySummaryStores();
+      loadMonthlySummaryMonths();
     }
 
     function closeMonthlySummaryModal() {
@@ -2644,22 +2773,26 @@
       document.getElementById('monthlySummaryModal').setAttribute('aria-hidden', 'true');
     }
 
-    async function checkMonthlySummaryStatus(groups) {
+    async function checkMonthlySummaryStatus(groups, targetMonth) {
       const response = await fetch(`${dailyApiBaseUrl}/monthly-summary/status`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ groups }),
+        body: JSON.stringify({ groups, target_month: targetMonth }),
       });
       const body = await parseApiResponse(response);
       if (!response.ok) throw body.error || body;
       return body;
     }
 
-    async function submitMonthlySummary(groups, forceOverwrite) {
+    async function submitMonthlySummary(groups, targetMonth, forceOverwrite) {
       const response = await fetch(`${dailyApiBaseUrl}/monthly-summary`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ groups, force_overwrite: forceOverwrite }),
+        body: JSON.stringify({
+          groups,
+          target_month: targetMonth,
+          force_overwrite: forceOverwrite,
+        }),
       });
       const body = await parseApiResponse(response);
       if (!response.ok) throw body.error || body;
@@ -2667,45 +2800,73 @@
     }
 
     async function generateMonthlySummary() {
-      const select = document.getElementById('monthlySummaryStoreSelect');
-      const groups = Array.from(select.selectedOptions).map(option => option.value).filter(Boolean);
-      const names = Array.from(select.selectedOptions).map(option => option.textContent).filter(Boolean).join('、');
+      const storeSelect = document.getElementById('monthlySummaryStoreSelect');
+      const monthSelect = document.getElementById('monthlySummaryMonthSelect');
+      const groups = Array.from(storeSelect.selectedOptions).map(option => option.value).filter(Boolean);
+      const names = Array.from(storeSelect.selectedOptions).map(option => option.textContent).filter(Boolean).join('、');
+      const targetMonth = monthSelect.value;
+      const monthName = monthSelect.selectedOptions[0]?.textContent || targetMonth;
       if (!groups.length) {
         alert('请选择至少一个门店');
         return;
       }
+      if (!targetMonth) {
+        alert('请选择统计月份');
+        return;
+      }
+
       document.getElementById('dailyStatus').className = 'status info';
       document.getElementById('dailyStatus').textContent = '检查中';
-      document.getElementById('dailyLog').textContent = `正在检查当月横向汇总目录：${names}`;
+      document.getElementById('dailyLog').textContent = `正在检查 ${monthName} 横向汇总及缺失日期：${names}`;
       try {
-        const status = await checkMonthlySummaryStatus(groups);
+        const status = await checkMonthlySummaryStatus(groups, targetMonth);
         const existingItems = (status.items || []).filter(item => item.store_dir_exists);
+        const missingItems = (status.items || []).filter(item => (item.missing_dates || []).length);
+        const prelaunchItems = (status.items || []).filter(item => (item.prelaunch_dates || []).length);
+        let missingText = missingItems.length
+          ? `\n\n检测到缺失日报：${missingItems.map(item => `${item.name} ${item.missing_dates.length} 天`).join('；')}。\n确认后将按日期逐日下载线索明细和话单并生成日报，耗时可能较长。`
+          : '\n\n该月份日报齐全，无需补拉原始数据。';
+        if (prelaunchItems.length) {
+          missingText += `
+上线前日期将自动跳过：${prelaunchItems.map(item => `${item.name} ${item.prelaunch_dates.length} 天`).join('；')}。`;
+        }
         let forceOverwrite = false;
         if (existingItems.length) {
           const existingNames = existingItems.map(item => item.name).join('、');
-          forceOverwrite = confirm(`【${existingNames}】在 ${status.period} 已生成过当月横向汇总表。\n\n是否再次生成并覆盖原所有文件？\n\n选择“确定”：清空对应门店目录后重新拉取生成。\n选择“取消”：不生成。`);
+          forceOverwrite = confirm(`【${existingNames}】在 ${status.period} 已生成过月度横向汇总表。${missingText}\n\n是否再次生成并覆盖原所有文件？`);
           if (!forceOverwrite) {
             document.getElementById('dailyStatus').className = 'status gray';
             document.getElementById('dailyStatus').textContent = '已取消';
             document.getElementById('dailyLog').textContent = '已取消重复生成。';
             return;
           }
-        } else if (!confirm(`确认生成【${names}】当月横向汇总表？`)) {
+        } else if (!confirm(`确认生成【${names}】${monthName}横向汇总表？${missingText}`)) {
           document.getElementById('dailyStatus').className = 'status gray';
           document.getElementById('dailyStatus').textContent = '已取消';
           document.getElementById('dailyLog').textContent = '已取消生成。';
           return;
         }
+
         closeMonthlySummaryModal();
         document.getElementById('dailyStatus').className = 'status info';
-        document.getElementById('dailyStatus').textContent = '月度汇总中';
-        document.getElementById('dailyLog').textContent = forceOverwrite ? `正在覆盖生成当月横向汇总表：${names}` : `正在生成当月横向汇总表：${names}`;
-        const body = await submitMonthlySummary(groups, forceOverwrite);
+        document.getElementById('dailyStatus').textContent = missingItems.length ? '补数并汇总中' : '月度汇总中';
+        document.getElementById('dailyLog').textContent = missingItems.length
+          ? `正在逐日补拉缺失数据并生成 ${monthName} 横向汇总：${names}，请勿关闭后端服务。`
+          : `正在生成 ${monthName} 横向汇总表：${names}`;
+        const body = await submitMonthlySummary(groups, targetMonth, forceOverwrite);
         renderMonthlySummary(body);
+        const skipped = body.skipped || [];
+        const skippedOnly = !(body.groups || []).length && skipped.length;
         document.getElementById('dailyStatus').className = 'status ok';
-        document.getElementById('dailyStatus').textContent = '月度汇总完成';
+        document.getElementById('dailyStatus').textContent = skippedOnly ? '已跳过' : '月度汇总完成';
+        const supplementedCount = (body.groups || []).reduce((total, item) => total + (item.supplemented_dates || []).length, 0);
+        const supplementedText = supplementedCount ? `，已补齐 ${supplementedCount} 个门店日期` : '';
         const errorText = (body.errors || []).length ? `\n部分门店未生成：${(body.errors || []).map(item => item.message).join('；')}` : '';
-        document.getElementById('dailyLog').textContent = `已生成 ${body.period} 当月横向汇总表，保存目录：${body.output_dir}${errorText}`;
+        const skippedText = skipped.length ? `
+已跳过：${skipped.map(item => item.reason).join('；')}` : '';
+        document.getElementById('dailyLog').textContent = skippedOnly
+          ? skipped.map(item => item.reason).join('；')
+          : `已生成 ${body.month_label || monthName} 横向汇总表${supplementedText}，保存目录：${body.output_dir}${errorText}${skippedText}`;
       } catch (error) {
         document.getElementById('dailyStatus').className = 'status danger';
         document.getElementById('dailyStatus').textContent = '月度汇总失败';
@@ -2713,12 +2874,12 @@
       }
     }
 
-
-    async function copyMonthlySummaryImageToClipboard(group, period, button) {
+    async function copyMonthlySummaryImageToClipboard(group, period, outputFolder, button) {
       if (!group || !period) return;
       const params = new URLSearchParams();
       params.set('group', group);
       params.set('period', period);
+      if (outputFolder) params.set('output_folder', outputFolder);
       const original = button.textContent;
       button.textContent = '生成中';
       button.disabled = true;
@@ -2822,6 +2983,7 @@
       document.getElementById('dailyLog').textContent = `正在检查 ${reportDate} 全门店机器人汇总表是否已存在...`;
       try {
         const status = await checkAllStoreSummaryStatus(reportDate);
+
         let forceOverwrite = false;
         if (status.exists) {
           forceOverwrite = confirm(`已有${status.filename}，是否要重新生成？\n\n选择“确定”：覆盖原文件并重新生成。\n选择“取消”：不生成。`);
@@ -3189,7 +3351,7 @@
         return;
       }
       if (button.dataset.copyMonthlyImageGroup) {
-        copyMonthlySummaryImageToClipboard(button.dataset.copyMonthlyImageGroup, button.dataset.copyMonthlyPeriod, button);
+        copyMonthlySummaryImageToClipboard(button.dataset.copyMonthlyImageGroup, button.dataset.copyMonthlyPeriod, button.dataset.copyMonthlyOutputFolder || '', button);
         return;
       }
       if (button.dataset.copyImageGroup) {

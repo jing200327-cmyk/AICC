@@ -35,6 +35,13 @@ sys.path.insert(0, str(TOOLS_DIR))
 from recorder import crawl, ACCOUNTS
 
 
+def resolve_output_dir(report_date: str) -> Path:
+    override = (os.environ.get("REPORT_OUTPUT_DIR") or "").strip()
+    if override:
+        return Path(override).expanduser().resolve()
+    return BASE_DIR.joinpath("data", report_date)
+
+
 def extract_conclusions(text: str, company: str, date: str) -> list[tuple[str, str]]:
     """从 process_clue_report 的完整输出中提取一个或多个结论部分"""
     lines = text.splitlines()
@@ -170,7 +177,7 @@ def retry_changsha_if_needed(files: dict, today: str, out_dir: Path, report_dir:
 
 def main():
     today = os.environ.get("REPORT_DATE") or datetime.now().strftime("%y%m%d")
-    out_dir = BASE_DIR.joinpath("data", today)
+    out_dir = resolve_output_dir(today)
     accounts = select_accounts()
 
     # === Step 1: 爬取数据 ===

@@ -1,18 +1,21 @@
 from __future__ import annotations
 
 import asyncio
+import calendar
 import html
 import importlib
+import json
 import os
 import re
 import shutil
+import subprocess
 import stat
 import sys
 import time as time_module
 import uuid
 from copy import copy
 from dataclasses import asdict
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 from io import BytesIO
 from pathlib import Path
 from typing import Any
@@ -75,7 +78,7 @@ REPORT_PREVIEW_GROUPS = [
             '\u5e7f\u5dde\u9f99\u661f\u884c-\u756a\u79ba\u65b0\u8f66\u9996\u547c',
         ],
         'summary': '\u5e7f\u5dde\u65b0\u8f66',
-        'stores': ['\u5e7f\u5dde\u9f99\u661f\u884c'],
+        'stores': ['\u6d77\u73e0\u9f99\u661f\u884c'],
     },
     {
         'key': 'guangzhou_after_sales',
@@ -88,6 +91,29 @@ REPORT_PREVIEW_GROUPS = [
         'stores': ['\u5e7f\u5dde\u9f99\u661f\u884c'],
     },
 ]
+
+
+MONTHLY_SUMMARY_GROUPS = []
+for _preview_group in REPORT_PREVIEW_GROUPS:
+    if _preview_group['key'] != 'guangzhou_new':
+        MONTHLY_SUMMARY_GROUPS.append(_preview_group)
+        continue
+    MONTHLY_SUMMARY_GROUPS.extend([
+        {
+            'key': 'guangzhou_new_haizhu',
+            'title': '广州龙星行-海珠新车首呼',
+            'summary': '广州新车',
+            'source_column': '广州龙星行-海珠新车首呼',
+            'stores': ['海珠龙星行'],
+        },
+        {
+            'key': 'guangzhou_new_panyu',
+            'title': '广州龙星行-番禺新车首呼',
+            'summary': '广州新车',
+            'source_column': '广州龙星行-番禺新车首呼',
+            'stores': ['海珠龙星行'],
+        },
+    ])
 
 
 class DailyReportError(Exception):
@@ -217,118 +243,584 @@ class DailyReportService:
                 'name': group['title'],
                 'summary': group['summary'],
             }
-            for group in REPORT_PREVIEW_GROUPS
+            for group in MONTHLY_SUMMARY_GROUPS
         ]
 
-    def get_monthly_summary_status(self, groups: list[str], report_date: str | None = None) -> dict[str, Any]:
-        report_date = self._validate_report_date(report_date)
+    def list_monthly_summary_months(self) -> list[dict[str, str]]:
+        today = self._today()
+        options = []
+        for offset, suffix in enumerate(('当月', '前一个月', '前两个月')):
+            month_index = today.year * 12 + today.month - 1 - offset
+            year, zero_based_month = divmod(month_index, 12)
+            month = zero_based_month + 1
+            start = date(year, month, 1)
+            if offset == 0:
+                end = today
+            else:
+                end = date(year, month, calendar.monthrange(year, month)[1])
+            options.append({
+                'value': start.strftime('%y%m'),
+                'label': f'{month}月（{suffix}）',
+                'period_start': start.strftime('%y%m%d'),
+                'period_end': end.strftime('%y%m%d'),
+            })
+        return options
+
+    def get_monthly_summary_status(
+        self,
+        groups: list[str],
+        report_date: str | None = None,
+        target_month: str | None = None,
+    ) -> dict[str, Any]:
+        period_info = self._resolve_monthly_period(target_month, report_date)
         selected_groups = self._resolve_monthly_groups(groups)
-        period_start = f'{report_date[:4]}01'
-        period = f'{period_start}_{report_date}'
+        period_start = period_info['period_start']
+        period_end = period_info['period_end']
+        period = period_info['period']
         period_dir = self.project_root / 'data' / period
         items = []
         for group in selected_groups:
             display_name = group['title']
-            store_dir = period_dir / display_name
+            schedule = self._monthly_group_schedule(group, period_start, period_end)
+            expected_dates = schedule['expected_dates']
+            expected_date_set = set(expected_dates)
+            source_files = [
+                (day, path)
+                for day, path in self._monthly_summary_source_files(period_end, group['summary'])
+                if day in expected_date_set
+            ]
+            available_dates = [day for day, _ in source_files]
+            missing_dates = [day for day in expected_dates if day not in set(available_dates)]
+            output_folder = self._monthly_output_folder(display_name, period_info['month'], bool(missing_dates))
+            store_dir = period_dir / output_folder
             output_path = store_dir / f'{display_name}_月度横向对比表.xlsx'
+            existing_dirs = [
+                path for path in self._monthly_store_dir_candidates(period_dir, display_name, period_info['month'])
+                if path.exists()
+            ]
             items.append({
                 'key': group['key'],
                 'name': display_name,
                 'summary_name': group['summary'],
                 'period': period,
                 'period_dir_exists': period_dir.exists(),
-                'store_dir_exists': store_dir.exists(),
+                'store_dir_exists': bool(existing_dirs),
+                'existing_dirs': [str(path) for path in existing_dirs],
+                'output_folder': output_folder,
                 'output_exists': output_path.exists(),
                 'store_dir': str(store_dir),
                 'output_path': str(output_path) if output_path.exists() else '',
+                'available_dates': available_dates,
+                'missing_dates': missing_dates,
+                'expected_date_count': len(expected_dates),
+                'expected_dates': expected_dates,
+                'launch_date': schedule['launch_date'],
+                'effective_period_start': schedule['effective_period_start'],
+                'prelaunch_dates': schedule['prelaunch_dates'],
+                'is_prelaunch_period': schedule['is_prelaunch_period'],
             })
         return {
-            'report_date': report_date,
+            'report_date': period_end,
+            'target_month': period_info['month'],
+            'month_label': period_info['month_label'],
             'period_start': period_start,
-            'period_end': report_date,
+            'period_end': period_end,
             'period': period,
             'period_dir': str(period_dir),
             'has_existing': any(item['store_dir_exists'] for item in items),
             'items': items,
         }
 
-    def generate_monthly_summaries(self, groups: list[str], report_date: str | None = None, force_overwrite: bool = False) -> dict[str, Any]:
-        report_date = self._validate_report_date(report_date)
+    def generate_monthly_summaries(
+        self,
+        groups: list[str],
+        report_date: str | None = None,
+        force_overwrite: bool = False,
+        target_month: str | None = None,
+    ) -> dict[str, Any]:
+        status = self.get_monthly_summary_status(groups, report_date=report_date, target_month=target_month)
         selected_groups = self._resolve_monthly_groups(groups)
-        period_start = f'{report_date[:4]}01'
-        period = f'{period_start}_{report_date}'
-        period_dir = self.project_root / 'data' / period
+        status_by_key = {item['key']: item for item in status['items']}
+        period_dir = Path(status['period_dir'])
         generated = []
         errors = []
+        skipped = []
+        supplement_cache: dict[tuple[str, tuple[str, ...], str], list[tuple[str, Path]]] = {}
+
+        existing_items = [item for item in status['items'] if item['store_dir_exists']]
+        if existing_items and not force_overwrite:
+            names = '、'.join(item['name'] for item in existing_items)
+            raise DailyReportError(f'{names} 已存在月度横向汇总目录，请确认是否再次生成')
+        if force_overwrite:
+            for item in existing_items:
+                for existing_dir in item['existing_dirs']:
+                    self._clear_monthly_store_dir(Path(existing_dir))
 
         for group in selected_groups:
+            item = status_by_key[group['key']]
             summary_name = group['summary']
             display_name = group['title']
-            store_dir = period_dir / display_name
-            if store_dir.exists() and not force_overwrite:
-                raise DailyReportError(f'{display_name} 已存在月度横向汇总目录，请确认是否再次生成')
-            if store_dir.exists() and force_overwrite:
-                self._clear_monthly_store_dir(store_dir)
-            store_dir.mkdir(parents=True, exist_ok=True)
-            source_files = self._monthly_summary_source_files(report_date, summary_name)
-            if not source_files:
-                errors.append({
+            if item['is_prelaunch_period']:
+                skipped.append({
                     'group': group['key'],
                     'name': display_name,
-                    'message': f'未找到 {summary_name} 当月汇总表',
+                    'launch_date': item['launch_date'],
+                    'reason': f"{display_name}于{item['launch_date']}上线，所选月份无可统计数据，已跳过",
                 })
                 continue
 
+            store_dir = Path(item['store_dir'])
+            store_dir.mkdir(parents=True, exist_ok=True)
+
+            expected_date_set = set(item['expected_dates'])
+            standard_files = [
+                (day, path)
+                for day, path in self._monthly_summary_source_files(status['period_end'], summary_name)
+                if day in expected_date_set
+            ]
+            supplemented_files: list[tuple[str, Path]] = []
+            try:
+                if item['missing_dates']:
+                    cache_key = (summary_name, tuple(item['missing_dates']), status['period_end'])
+                    if cache_key not in supplement_cache:
+                        supplement_cache[cache_key] = self._generate_missing_daily_summaries(
+                            group,
+                            item['missing_dates'],
+                            store_dir,
+                            status['period_end'],
+                        )
+                    supplemented_files = supplement_cache[cache_key]
+            except DailyReportError as exc:
+                errors.append({
+                    'group': group['key'],
+                    'name': display_name,
+                    'message': exc.detail or str(exc),
+                })
+                continue
+
+            files_by_date = {day: path for day, path in standard_files}
+            files_by_date.update({day: path for day, path in supplemented_files})
+            missing_after_supplement = [
+                day for day in item['expected_dates']
+                if day not in files_by_date
+            ]
+            if missing_after_supplement:
+                errors.append({
+                    'group': group['key'],
+                    'name': display_name,
+                    'message': f"{display_name} 补数后仍缺少日期：{','.join(missing_after_supplement)}",
+                })
+                continue
+
+            source_files = sorted(files_by_date.items(), key=lambda item: item[0])
             copied_files = []
             for _, source_path in source_files:
                 target_path = store_dir / source_path.name
+                copied_path = target_path
                 try:
-                    shutil.copy2(source_path, target_path)
-                except PermissionError as exc:
-                    raise DailyReportError(f'{target_path.name} 文件正在被占用，请关闭已打开的 Excel 文件后重试') from exc
-                copied_files.append(str(target_path))
+                    if source_path.resolve() != target_path.resolve():
+                        shutil.copy2(source_path, target_path)
+                except PermissionError:
+                    # Root-level copies are only for convenient access; calculation uses source_files directly.
+                    copied_path = source_path
+                copied_files.append(str(copied_path))
 
             output_path = store_dir / f'{display_name}_月度横向对比表.xlsx'
             try:
-                self._build_monthly_horizontal_summary(source_files, output_path, display_name, report_date)
+                self._build_monthly_horizontal_summary(
+                    source_files,
+                    output_path,
+                    display_name,
+                    status['period_end'],
+                    source_column=group.get('source_column'),
+                )
             except PermissionError as exc:
                 raise DailyReportError(f'{output_path.name} 文件正在被占用，请关闭已打开的 Excel 文件后重试') from exc
             preview = self._summary_preview(output_path, display_name)
             generated.append({
                 'key': group['key'],
-                'title': f'{display_name}{period_start[-4:]}-{report_date[-4:]}汇总',
+                'title': f"{display_name}{status['period_start'][-4:]}-{status['period_end'][-4:]}汇总",
                 'name': display_name,
                 'summary_name': summary_name,
-                'period': period,
+                'period': status['period'],
+                'target_month': status['target_month'],
+                'month_label': status['month_label'],
+                'output_folder': item['output_folder'],
                 'output_dir': str(store_dir),
                 'source_files': copied_files,
+                'missing_dates': item['missing_dates'],
+                'supplemented_dates': [day for day, _ in supplemented_files],
                 'summary': preview,
             })
 
-        if not generated:
-            detail = '; '.join(item['message'] for item in errors) or '未生成月度横向汇总表'
+        if not generated and errors:
+            detail = '; '.join(item['message'] for item in errors)
             raise DailyReportError(detail)
 
         return {
-            'report_date': report_date,
-            'period_start': period_start,
-            'period_end': report_date,
-            'period': period,
+            'report_date': status['period_end'],
+            'target_month': status['target_month'],
+            'month_label': status['month_label'],
+            'period_start': status['period_start'],
+            'period_end': status['period_end'],
+            'period': status['period'],
             'output_dir': str(period_dir),
             'groups': generated,
             'errors': errors,
+            'skipped': skipped,
         }
 
-    def get_monthly_summary_image(self, period: str, group: str) -> tuple[bytes, str]:
+    def get_monthly_summary_image(
+        self,
+        period: str,
+        group: str,
+        output_folder: str = '',
+    ) -> tuple[bytes, str]:
         if not re.fullmatch(r'\d{6}_\d{6}', str(period or '').strip()):
             raise InvalidReportDateError(period)
-        group_config = self._resolve_preview_group(group)
+        if str(group or '').strip() in {'guangzhou_new', '广州新车'}:
+            group_config = self._resolve_preview_group(group)
+        else:
+            group_config = self._resolve_monthly_group(str(group or '').strip())
         display_name = group_config['title']
-        summary_path = self.project_root / 'data' / period / display_name / f'{display_name}_月度横向对比表.xlsx'
+        month = period[:4]
+        allowed_folders = {
+            display_name,
+            self._monthly_output_folder(display_name, month, True),
+        }
+        folder = str(output_folder or '').strip() or display_name
+        if folder not in allowed_folders:
+            raise InvalidReportGroupError(folder)
+        summary_path = self.project_root / 'data' / period / folder / f'{display_name}_月度横向对比表.xlsx'
+        if not summary_path.exists() and not output_folder:
+            fallback_folder = self._monthly_output_folder(display_name, month, True)
+            fallback = self.project_root / 'data' / period / fallback_folder / f'{display_name}_月度横向对比表.xlsx'
+            if fallback.exists():
+                summary_path = fallback
         if not summary_path.exists():
             raise DailyReportError(f'Monthly summary file does not exist: {summary_path.name}')
         image_bytes = self._summary_image(summary_path)
         return image_bytes, f'{display_name}_{period}_monthly.png'
+
+    def _today(self) -> date:
+        return date.today()
+
+    def _resolve_monthly_period(
+        self,
+        target_month: str | None,
+        report_date: str | None,
+    ) -> dict[str, str]:
+        if target_month:
+            value = str(target_month).strip()
+            options = {item['value']: item for item in self.list_monthly_summary_months()}
+            if value not in options:
+                raise InvalidReportDateError(value)
+            selected = options[value]
+            return {
+                'month': selected['value'],
+                'month_label': f"{int(selected['value'][-2:])}月",
+                'period_start': selected['period_start'],
+                'period_end': selected['period_end'],
+                'period': f"{selected['period_start']}_{selected['period_end']}",
+            }
+
+        end = self._validate_report_date(report_date)
+        start = f'{end[:4]}01'
+        return {
+            'month': end[:4],
+            'month_label': f'{int(end[2:4])}月',
+            'period_start': start,
+            'period_end': end,
+            'period': f'{start}_{end}',
+        }
+
+    def _date_range(self, start: str, end: str) -> list[str]:
+        start_date = datetime.strptime(start, '%y%m%d').date()
+        end_date = datetime.strptime(end, '%y%m%d').date()
+        result = []
+        current = start_date
+        while current <= end_date:
+            result.append(current.strftime('%y%m%d'))
+            current += timedelta(days=1)
+        return result
+
+    def _monthly_group_schedule(
+        self,
+        group: dict[str, Any],
+        period_start: str,
+        period_end: str,
+    ) -> dict[str, Any]:
+        try:
+            configured_accounts = self._load_accounts()
+        except (ImportError, ModuleNotFoundError):
+            configured_accounts = []
+        accounts = {
+            str(account.get('name') or '').strip(): account
+            for account in configured_accounts
+        }
+        launch_dates = []
+        has_unrestricted_account = False
+        for account_name in group.get('stores', []):
+            account = accounts.get(account_name)
+            if not account:
+                continue
+            launch_date = self._account_launch_date(account)
+            if launch_date:
+                launch_dates.append(launch_date)
+            else:
+                has_unrestricted_account = True
+
+        launch_date = ''
+        if launch_dates and not has_unrestricted_account:
+            launch_date = min(launch_dates)
+
+        effective_period_start = max(period_start, launch_date) if launch_date else period_start
+        expected_dates = (
+            self._date_range(effective_period_start, period_end)
+            if effective_period_start <= period_end
+            else []
+        )
+        prelaunch_dates = []
+        if launch_date and launch_date > period_start:
+            prelaunch_end = min(
+                datetime.strptime(period_end, '%y%m%d').date(),
+                datetime.strptime(launch_date, '%y%m%d').date() - timedelta(days=1),
+            )
+            if datetime.strptime(period_start, '%y%m%d').date() <= prelaunch_end:
+                prelaunch_dates = self._date_range(period_start, prelaunch_end.strftime('%y%m%d'))
+
+        return {
+            'launch_date': launch_date,
+            'effective_period_start': effective_period_start,
+            'expected_dates': expected_dates,
+            'prelaunch_dates': prelaunch_dates,
+            'is_prelaunch_period': bool(launch_date and launch_date > period_end),
+        }
+
+    def _account_launch_date(self, account: dict[str, Any]) -> str:
+        value = str(account.get('mtd_start_date') or '').strip()
+        if not re.fullmatch(r'[0-9]{6}', value):
+            return ''
+        try:
+            datetime.strptime(value, '%y%m%d')
+        except ValueError:
+            return ''
+        return value
+
+    def _account_is_active_on(self, account: dict[str, Any], report_date: str) -> bool:
+        launch_date = self._account_launch_date(account)
+        return not launch_date or report_date >= launch_date
+
+    def _monthly_output_folder(self, display_name: str, month: str, has_missing: bool) -> str:
+        if not has_missing:
+            return display_name
+        month_names = {
+            1: '一月', 2: '二月', 3: '三月', 4: '四月', 5: '五月', 6: '六月',
+            7: '七月', 8: '八月', 9: '九月', 10: '十月', 11: '十一月', 12: '十二月',
+        }
+        return f"{display_name}_{month_names[int(month[-2:])]}_缺失"
+
+    def _monthly_store_dir_candidates(self, period_dir: Path, display_name: str, month: str) -> list[Path]:
+        return [
+            period_dir / display_name,
+            period_dir / self._monthly_output_folder(display_name, month, True),
+        ]
+
+    def _generate_missing_daily_summaries(
+        self,
+        group: dict[str, Any],
+        missing_dates: list[str],
+        store_dir: Path,
+        source_date: str,
+    ) -> list[tuple[str, Path]]:
+        accounts = {
+            str(account.get('name') or '').strip(): account
+            for account in self._load_accounts()
+        }
+        account_names = [
+            name for name in group.get('stores', [])
+            if name in accounts
+        ]
+        if not account_names:
+            raise DailyReportError(f"{group['title']} 未找到可用于补跑的账户配置")
+
+        supplement_root = store_dir / '补数日报'
+        log_root = store_dir / '补数日志'
+        supplement_root.mkdir(parents=True, exist_ok=True)
+        log_root.mkdir(parents=True, exist_ok=True)
+
+        snapshot_files = {
+            account_name: self._resolve_monthly_snapshot_files(
+                accounts[account_name],
+                source_date,
+                store_dir,
+            )
+            for account_name in account_names
+        }
+        generated = []
+
+        for report_date in missing_dates:
+            eligible_account_names = [
+                name for name in account_names
+                if self._account_is_active_on(accounts[name], report_date)
+            ]
+            if not eligible_account_names:
+                continue
+
+            day_dir = supplement_root / report_date
+            for account_name in eligible_account_names:
+                log_path = log_root / f'{report_date}_{account_name}.log'
+                self._run_daily_processor_from_snapshot(
+                    accounts[account_name],
+                    report_date,
+                    day_dir,
+                    snapshot_files[account_name],
+                    log_path,
+                )
+
+            summary_dir = day_dir / '汇总表'
+            suffix = self._summary_suffix(report_date)
+            direct = summary_dir / f"{group['summary']}{suffix}.xlsx"
+            if direct.exists():
+                generated.append((report_date, direct))
+                continue
+            matches = sorted(
+                path for path in summary_dir.glob(f"{group['summary']}*{suffix}.xlsx")
+                if path.is_file() and not path.name.startswith('~$')
+            ) if summary_dir.exists() else []
+            if not matches:
+                raise DailyReportError(
+                    f"{group['title']} {report_date} 补跑完成但未生成 {group['summary']} 汇总表"
+                )
+            generated.append((report_date, matches[0]))
+        return generated
+
+    def _resolve_monthly_snapshot_files(
+        self,
+        account: dict[str, Any],
+        source_date: str,
+        store_dir: Path,
+    ) -> dict[str, Path]:
+        account_name = str(account.get('name') or '').strip()
+
+        def files_in(root: Path) -> dict[str, Path] | None:
+            raw_dir = root / '原始数据'
+            files = {
+                'clue': raw_dir / f'{account_name}-outcall-线索明细-{source_date}.xlsx',
+                'call': raw_dir / f'{account_name}-aicc-话单-{source_date}.xlsx',
+            }
+            return files if all(path.exists() for path in files.values()) else None
+
+        standard_files = files_in(self.project_root / 'data' / source_date)
+        if standard_files:
+            return standard_files
+
+        snapshot_dir = store_dir / '补数基准' / source_date
+        cached_files = files_in(snapshot_dir)
+        if cached_files:
+            return cached_files
+
+        snapshot_dir.mkdir(parents=True, exist_ok=True)
+        env = os.environ.copy()
+        env['REPORT_DATE'] = source_date
+        env['REPORT_STORE'] = account_name
+        env['REPORT_OUTPUT_DIR'] = str(snapshot_dir)
+        env['REPORT_REFRESH_CLUE'] = '1'
+        env['PYTHONIOENCODING'] = 'utf-8'
+        result = subprocess.run(
+            [sys.executable, str(self.project_root / 'main.py')],
+            cwd=str(self.project_root),
+            env=env,
+            capture_output=True,
+            text=True,
+            encoding='utf-8',
+            errors='replace',
+        )
+        log_path = store_dir / '补数日志' / f'{source_date}_{account_name}_完整快照.log'
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        log_path.write_text((result.stdout or '') + (result.stderr or ''), encoding='utf-8')
+        if result.returncode != 0:
+            raise DailyReportError(
+                f'{account_name} {source_date} 完整月度快照下载失败，详见 {log_path}'
+            )
+
+        generated_files = files_in(snapshot_dir)
+        if not generated_files:
+            raise DailyReportError(
+                f'{account_name} {source_date} 完整月度快照缺少线索明细或话单，详见 {log_path}'
+            )
+        return generated_files
+
+    def _run_daily_processor_from_snapshot(
+        self,
+        account: dict[str, Any],
+        report_date: str,
+        output_dir: Path,
+        source_files: dict[str, Path],
+        log_path: Path,
+    ) -> None:
+        account_name = str(account.get('name') or '').strip()
+        command = [
+            sys.executable,
+            str(self.project_root / 'tools' / 'process_clue_report.py'),
+            '--call_file', str(source_files['call']),
+            '--xiansuo_file', str(source_files['clue']),
+            '--company', account_name,
+            '--date', report_date,
+            '--output_dir', str(output_dir),
+        ]
+        scalar_options = {
+            'group_by_call_field': '--group_by_call_field',
+            'mtd_start_date': '--mtd_start_date',
+            'merge_summary_title': '--merge_summary_title',
+            'unmatched_group_name': '--unmatched_group_name',
+            'clue_match_limit': '--clue_match_limit',
+        }
+        for key, flag in scalar_options.items():
+            value = account.get(key)
+            if value not in (None, ''):
+                command.extend([flag, str(value)])
+        list_options = {
+            'exclude_clue_ids': '--exclude_clue_ids',
+            'required_group_values': '--required_group_values',
+        }
+        for key, flag in list_options.items():
+            values = account.get(key) or []
+            if values:
+                command.extend([flag, ','.join(str(value) for value in values)])
+        json_options = {
+            'group_display_names': '--group_display_names',
+            'group_summary_names': '--group_summary_names',
+        }
+        for key, flag in json_options.items():
+            values = account.get(key) or {}
+            if values:
+                command.extend([flag, json.dumps(values, ensure_ascii=False)])
+
+        env = os.environ.copy()
+        env['PYTHONIOENCODING'] = 'utf-8'
+        result = subprocess.run(
+            command,
+            cwd=str(self.project_root),
+            env=env,
+            capture_output=True,
+            text=True,
+            encoding='utf-8',
+            errors='replace',
+        )
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        source_note = (
+            f"月度补跑统一快照：{source_files['clue']}\n"
+            f"月度补跑统一话单：{source_files['call']}\n\n"
+        )
+        log_path.write_text(
+            source_note + (result.stdout or '') + (result.stderr or ''),
+            encoding='utf-8',
+        )
+        if result.returncode != 0:
+            raise DailyReportError(
+                f'{account_name} {report_date} 按完整月度快照补跑失败，详见 {log_path}'
+            )
 
     def _clear_monthly_store_dir(self, path: Path) -> None:
         if not path.exists():
@@ -342,7 +834,6 @@ class DailyReportService:
             except PermissionError:
                 # Some Windows accounts can overwrite files but cannot delete them; keep going and overwrite known outputs.
                 continue
-
     def _remove_tree(self, path: Path) -> None:
         def handle_remove_error(func, failed_path, exc_info):
             os.chmod(failed_path, stat.S_IWRITE)
@@ -362,14 +853,37 @@ class DailyReportService:
     def _resolve_monthly_groups(self, groups: list[str]) -> list[dict[str, Any]]:
         resolved = []
         seen = set()
-        for value in groups or []:
-            group = self._resolve_preview_group(str(value or '').strip())
-            if group['key'] not in seen:
-                resolved.append(group)
-                seen.add(group['key'])
+        for raw_value in groups or []:
+            value = str(raw_value or '').strip()
+            if value in {'guangzhou_new', '广州新车'}:
+                matched_groups = [
+                    group for group in MONTHLY_SUMMARY_GROUPS
+                    if group['key'] in {'guangzhou_new_haizhu', 'guangzhou_new_panyu'}
+                ]
+            else:
+                matched_groups = [self._resolve_monthly_group(value)]
+            for group in matched_groups:
+                if group['key'] not in seen:
+                    resolved.append(group)
+                    seen.add(group['key'])
         if not resolved:
             raise InvalidReportStoreError('请选择至少一个门店')
         return resolved
+
+    def _resolve_monthly_group(self, value: str) -> dict[str, Any]:
+        matches = [
+            group for group in MONTHLY_SUMMARY_GROUPS
+            if value in {group['key'], group['title']}
+        ]
+        if len(matches) == 1:
+            return matches[0]
+        summary_matches = [
+            group for group in MONTHLY_SUMMARY_GROUPS
+            if value == group['summary']
+        ]
+        if len(summary_matches) == 1:
+            return summary_matches[0]
+        raise InvalidReportGroupError(value)
 
     def _monthly_summary_source_files(self, report_date: str, summary_name: str) -> list[tuple[str, Path]]:
         data_dir = self.project_root / 'data'
@@ -402,16 +916,20 @@ class DailyReportService:
         output_path: Path,
         display_name: str,
         report_date: str,
+        source_column: str | None = None,
     ) -> None:
         template_path = source_files[-1][1]
         workbook = load_workbook(template_path, read_only=False, data_only=True)
         try:
             sheet = workbook.active
             self._expand_merged_summary_rows(sheet)
-            source_values = [self._summary_column_values(path) for _, path in source_files]
+            template_source_column = self._summary_column_index(sheet, source_column)
+            template_source_width = sheet.column_dimensions[get_column_letter(template_source_column)].width or 12
+            source_values = [
+                self._summary_column_values(path, source_column)
+                for _, path in source_files
+            ]
             max_rows = max([sheet.max_row or 1] + [len(values) for values in source_values])
-            if sheet.max_column > 2 + len(source_files):
-                sheet.delete_cols(3 + len(source_files), sheet.max_column - 2 - len(source_files))
 
             report_date_text = datetime.strptime(report_date, '%y%m%d').strftime('%Y-%m-%d')
             for row_index in range(1, max_rows + 1):
@@ -422,7 +940,7 @@ class DailyReportService:
                 elif label_text.startswith('Daily Report'):
                     label_cell.value = f'Daily Report ({report_date_text})'
 
-                source_style_cell = sheet.cell(row=row_index, column=3)
+                source_style_cell = sheet.cell(row=row_index, column=template_source_column)
                 for col_offset, (day, _) in enumerate(source_files):
                     target_cell = sheet.cell(row=row_index, column=3 + col_offset)
                     self._copy_cell_style(source_style_cell, target_cell)
@@ -436,9 +954,12 @@ class DailyReportService:
                         if number_format:
                             target_cell.number_format = number_format
 
+            if sheet.max_column > 2 + len(source_files):
+                sheet.delete_cols(3 + len(source_files), sheet.max_column - 2 - len(source_files))
+
             for col_index in range(3, 3 + len(source_files)):
                 letter = get_column_letter(col_index)
-                sheet.column_dimensions[letter].width = max(12, sheet.column_dimensions['C'].width or 12)
+                sheet.column_dimensions[letter].width = max(12, template_source_width)
 
             workbook.save(output_path)
         finally:
@@ -455,11 +976,32 @@ class DailyReportService:
                 for col_index in range(merged_range.min_col, merged_range.max_col + 1):
                     self._apply_cell_style_snapshot(sheet.cell(row=row_index, column=col_index), style_source)
 
-    def _summary_column_values(self, path: Path) -> list[tuple[Any, str]]:
+    def _summary_column_index(self, sheet, source_column: str | None) -> int:
+        if not source_column:
+            return 3
+        expected = str(source_column).strip()
+        for column_index in range(3, sheet.max_column + 1):
+            actual = str(sheet.cell(row=1, column=column_index).value or '').strip()
+            if actual == expected:
+                return column_index
+        raise DailyReportError(f'汇总表中未找到机器人列：{expected}')
+
+    def _summary_column_values(
+        self,
+        path: Path,
+        source_column: str | None = None,
+    ) -> list[tuple[Any, str]]:
         workbook = load_workbook(path, read_only=False, data_only=True)
         try:
             sheet = workbook.active
-            return [(sheet.cell(row=row_index, column=3).value, str(sheet.cell(row=row_index, column=3).number_format or '')) for row_index in range(1, sheet.max_row + 1)]
+            column_index = self._summary_column_index(sheet, source_column)
+            return [
+                (
+                    sheet.cell(row=row_index, column=column_index).value,
+                    str(sheet.cell(row=row_index, column=column_index).number_format or ''),
+                )
+                for row_index in range(1, sheet.max_row + 1)
+            ]
         finally:
             workbook.close()
 

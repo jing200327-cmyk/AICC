@@ -68,18 +68,28 @@ def find_column(df: pd.DataFrame, candidates: list[str]) -> str | None:
     return None
 
 
-def read_input(input_path: Path) -> pd.DataFrame:
+def list_sheet_names(input_path: Path) -> list[str]:
+    if input_path.suffix.lower() not in [".xlsx", ".xls"]:
+        return []
+    with pd.ExcelFile(input_path) as excel:
+        return list(excel.sheet_names)
+
+
+def read_input(input_path: Path, sheet_name: str | None = None) -> pd.DataFrame:
     suffix = input_path.suffix.lower()
     if suffix in [".xlsx", ".xls"]:
         with pd.ExcelFile(input_path) as excel:
-            return pd.read_excel(excel, sheet_name=excel.sheet_names[0])
+            selected_sheet = sheet_name or excel.sheet_names[0]
+            if selected_sheet not in excel.sheet_names:
+                raise LeadProcessingError(f"Worksheet does not exist: {selected_sheet}")
+            return pd.read_excel(excel, sheet_name=selected_sheet)
     if suffix == ".csv":
         return pd.read_csv(input_path)
     raise LeadProcessingError("Unsupported file type")
 
 
-def generate_txt(input_path: Path, output_path: Path, store: StoreScript) -> int:
-    df = read_input(input_path)
+def generate_txt(input_path: Path, output_path: Path, store: StoreScript, sheet_name: str | None = None) -> int:
+    df = read_input(input_path, sheet_name=sheet_name)
     if df.empty or len(df.columns) == 0:
         raise LeadProcessingError("Input table is empty")
 

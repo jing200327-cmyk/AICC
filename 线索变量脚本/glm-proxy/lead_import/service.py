@@ -7,7 +7,7 @@ from pathlib import Path
 
 from .detector import StoreDetector
 from .models import DetectedStore, InputFileInfo, JobError, LeadImportJob, LeadImportSummary, OutputInfo
-from .processor import LeadProcessingError, generate_txt
+from .processor import LeadProcessingError, generate_txt, list_sheet_names
 from .registry import StoreScriptRegistry
 
 
@@ -36,6 +36,20 @@ class FileTooLargeError(LeadImportError):
     message = "Uploaded file is too large"
 
 
+class SheetSelectionRequiredError(LeadImportError):
+    code = "SHEET_SELECTION_REQUIRED"
+    message = "Please select a worksheet to process"
+
+    def __init__(self, sheet_names: list[str]):
+        super().__init__(self.message)
+        self.sheet_names = sheet_names
+
+
+class InvalidSheetNameError(LeadImportError):
+    code = "INVALID_SHEET_NAME"
+    message = "Selected worksheet does not exist"
+
+
 ALLOWED_SUFFIXES = {".xlsx", ".xls", ".csv"}
 MAX_UPLOAD_SIZE = 20 * 1024 * 1024
 
@@ -48,7 +62,14 @@ class LeadImportService:
         self.input_root = Path(input_root)
         self.jobs: dict[str, LeadImportJob] = {}
 
-    def create_job_from_path(self, source_path: Path, filename: str, remark: str = "", force_store_code: str | None = None) -> LeadImportJob:
+    def create_job_from_path(
+        self,
+        source_path: Path,
+        filename: str,
+        remark: str = "",
+        force_store_code: str | None = None,
+        sheet_name: str | None = None,
+    ) -> LeadImportJob:
         source_path = Path(source_path)
         safe_name = Path(filename).name
         suffix = Path(safe_name).suffix.lower()
@@ -64,6 +85,13 @@ class LeadImportService:
         if force_store_code and not self.registry.has(force_store_code):
             raise InvalidStoreCodeError()
 
+        sheet_names = list_sheet_names(source_path)
+        if len(sheet_names) > 1 and not sheet_name:
+            raise SheetSelectionRequiredError(sheet_names)
+        if sheet_name and sheet_name not in sheet_names:
+            raise InvalidSheetNameError()
+        selected_sheet = sheet_name or (sheet_names[0] if sheet_names else None)
+
         job_id = f"job_{datetime.now().strftime('%Y%m%d')}_{uuid.uuid4().hex[:12]}"
         job = LeadImportJob(
             job_id=job_id,
@@ -75,6 +103,8 @@ class LeadImportService:
         )
         if remark:
             job.logs.append(f"Remark: {remark}")
+        if selected_sheet:
+            job.logs.append(f"Selected sheet: {selected_sheet}")
         self.jobs[job_id] = job
 
         detection = self.detector.detect(source_path, safe_name)
@@ -106,7 +136,7 @@ class LeadImportService:
 
         try:
             output_path = store_dir / f"{job_id}_{Path(safe_name).stem}.txt"
-            count = generate_txt(saved_input_path, output_path, store)
+            count = generate_txt(saved_input_path, output_path, store, sheet_name=selected_sheet)
             if count <= 0 or not output_path.exists():
                 raise LeadProcessingError("TXT was not generated")
             txt_content = output_path.read_text(encoding="utf-8")

@@ -13,7 +13,7 @@ if str(APP_DIR) not in sys.path:
 
 from lead_import.detector import StoreDetector
 from lead_import.registry import StoreScriptRegistry
-from lead_import.service import LeadImportService, UnsupportedFileTypeError
+from lead_import.service import InvalidSheetNameError, LeadImportService, SheetSelectionRequiredError, UnsupportedFileTypeError
 from server import app, lead_import_service
 
 
@@ -46,6 +46,19 @@ def make_excel(path: Path, sheet_name: str = "武汉银马线索") -> None:
         ]
     )
     df.to_excel(path, index=False, sheet_name=sheet_name)
+
+
+def make_multi_sheet_excel(path: Path) -> None:
+    with pd.ExcelWriter(path) as writer:
+        pd.DataFrame([{"车牌号": "鄂A11111", "车型": "测试车型"}]).to_excel(
+            writer, index=False, sheet_name="测试线索"
+        )
+        pd.DataFrame(
+            [
+                {"车牌号": "鄂A22222", "车型": "正式车型"},
+                {"车牌号": "鄂A33333", "车型": "正式车型"},
+            ]
+        ).to_excel(writer, index=False, sheet_name="正式线索")
 
 
 def test_registry_loads_registered_stores():
@@ -105,6 +118,62 @@ def test_successful_job_generates_txt(tmp_path):
     record = json.loads(lines[0])
     assert record["assigned_store"] == "武汉银马店"
     assert record["last_maintain_time"] == "2026-01-05"
+
+
+def test_multi_sheet_excel_requires_sheet_selection(tmp_path):
+    excel_path = tmp_path / "武汉银马-多工作表.xlsx"
+    make_multi_sheet_excel(excel_path)
+    service = LeadImportService(
+        registry=StoreScriptRegistry.default(),
+        output_root=tmp_path / "outputs",
+        input_root=tmp_path / "inputs",
+    )
+
+    with pytest.raises(SheetSelectionRequiredError) as exc_info:
+        service.create_job_from_path(excel_path, excel_path.name, force_store_code="wuhan_yinma")
+
+    assert exc_info.value.sheet_names == ["测试线索", "正式线索"]
+
+
+def test_rejects_unknown_sheet_name(tmp_path):
+    excel_path = tmp_path / "武汉银马-多工作表.xlsx"
+    make_multi_sheet_excel(excel_path)
+    service = LeadImportService(
+        registry=StoreScriptRegistry.default(),
+        output_root=tmp_path / "outputs",
+        input_root=tmp_path / "inputs",
+    )
+
+    with pytest.raises(InvalidSheetNameError):
+        service.create_job_from_path(
+            excel_path,
+            excel_path.name,
+            force_store_code="wuhan_yinma",
+            sheet_name="不存在的工作表",
+        )
+
+
+def test_selected_sheet_is_used_to_generate_txt(tmp_path):
+    excel_path = tmp_path / "武汉银马-多工作表.xlsx"
+    make_multi_sheet_excel(excel_path)
+    service = LeadImportService(
+        registry=StoreScriptRegistry.default(),
+        output_root=tmp_path / "outputs",
+        input_root=tmp_path / "inputs",
+    )
+
+    job = service.create_job_from_path(
+        excel_path,
+        excel_path.name,
+        force_store_code="wuhan_yinma",
+        sheet_name="正式线索",
+    )
+
+    assert job.status == "completed"
+    assert job.summary.total_count == 2
+    assert "Selected sheet: 正式线索" in job.logs
+    records = [json.loads(line) for line in Path(job.output.txt_file_path).read_text(encoding="utf-8").splitlines()]
+    assert [record["carNo"] for record in records] == ["鄂.A22222", "鄂.A33333"]
 
 
 def test_script_failure_is_structured(tmp_path):
@@ -171,6 +240,36 @@ def test_upload_endpoint_creates_completed_job(tmp_path):
     assert detail["detected_store"]["store_code"] == "wuhan_yinma"
     assert detail["input_file"]["saved_path"]
     assert detail["output"]["txt_preview"]
+
+
+def test_upload_endpoint_requests_and_accepts_sheet_selection(tmp_path):
+    excel_path = tmp_path / "武汉银马-多工作表.xlsx"
+    make_multi_sheet_excel(excel_path)
+    client = TestClient(app)
+
+    with excel_path.open("rb") as handle:
+        response = client.post(
+            "/api/leads/import",
+            files={"file": (excel_path.name, handle, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+            data={"force_store_code": "wuhan_yinma"},
+        )
+
+    assert response.status_code == 409
+    assert response.json()["error"] == {
+        "code": "SHEET_SELECTION_REQUIRED",
+        "message": "Please select a worksheet to process",
+        "detail": {"sheet_names": ["测试线索", "正式线索"]},
+    }
+
+    with excel_path.open("rb") as handle:
+        retry_response = client.post(
+            "/api/leads/import",
+            files={"file": (excel_path.name, handle, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+            data={"force_store_code": "wuhan_yinma", "sheet_name": "正式线索"},
+        )
+
+    assert retry_response.status_code == 200
+    assert retry_response.json()["status"] == "completed"
 
 
 def test_rejects_large_upload(tmp_path):
