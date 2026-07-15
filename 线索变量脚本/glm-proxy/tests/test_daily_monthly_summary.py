@@ -151,7 +151,7 @@ def test_split_guangzhou_monthly_groups_share_one_backfill(tmp_path, monkeypatch
     write_guangzhou_new_summary(tmp_path, "260603", haizhu_value=13, panyu_value=29)
     backfill_calls = []
 
-    def generate_missing(group, missing_dates, store_dir, source_date):
+    def generate_missing(group, missing_dates, store_dir, source_date, mtd_start_date=None):
         backfill_calls.append((group["key"], tuple(missing_dates), source_date))
         return [
             ("260604", write_guangzhou_new_summary(tmp_path, "260604", haizhu_value=17, panyu_value=31))
@@ -196,6 +196,41 @@ def test_monthly_status_reports_every_missing_calendar_date(tmp_path):
     assert status["items"][0]["missing_dates"][0] == "260602"
     assert status["items"][0]["missing_dates"][-1] == "260629"
     assert status["items"][0]["output_folder"] == "骏宜_六月_缺失"
+
+
+def test_custom_period_status_spans_months_and_reports_missing_dates(tmp_path):
+    service = DailyReportService(tmp_path)
+    write_summary(tmp_path, "260613")
+    write_summary(tmp_path, "260713")
+
+    status = service.get_monthly_summary_status(
+        ["junyi"],
+        period_start="260613",
+        period_end="260713",
+    )
+
+    assert status["selection_mode"] == "custom"
+    assert status["period"] == "260613_260713"
+    assert status["period_label"] == "6月13日-7月13日"
+    assert status["items"][0]["available_dates"] == ["260613", "260713"]
+    assert status["items"][0]["missing_dates"][0] == "260614"
+    assert status["items"][0]["missing_dates"][-1] == "260712"
+    assert len(status["items"][0]["missing_dates"]) == 29
+    assert status["items"][0]["output_folder"] == "骏宜_0613-0713_缺失"
+
+
+def test_custom_period_requires_both_dates_and_ordered_range(tmp_path):
+    service = DailyReportService(tmp_path)
+
+    with pytest.raises(InvalidReportDateError):
+        service.get_monthly_summary_status(["junyi"], period_start="260613")
+
+    with pytest.raises(InvalidReportDateError):
+        service.get_monthly_summary_status(
+            ["junyi"],
+            period_start="260713",
+            period_end="260613",
+        )
 
 
 def test_guangzhou_new_monthly_status_skips_dates_before_launch(tmp_path, monkeypatch):
@@ -252,7 +287,7 @@ def test_generate_monthly_summary_merges_supplemented_days_in_date_order(tmp_pat
     write_summary(tmp_path, "260601")
     write_summary(tmp_path, "260630")
 
-    def generate_missing(group, missing_dates, store_dir, source_date):
+    def generate_missing(group, missing_dates, store_dir, source_date, mtd_start_date=None):
         supplement_root = store_dir / "补数日报"
         return [
             (day, write_summary(tmp_path, day, group["summary"], supplement_root))
@@ -289,6 +324,97 @@ def test_generate_monthly_summary_merges_supplemented_days_in_date_order(tmp_pat
     assert filename.endswith("_monthly.png")
 
 
+def test_custom_period_generation_recalculates_every_day_from_period_start(tmp_path, monkeypatch):
+    service = DailyReportService(tmp_path)
+    for day in ("260630", "260701", "260702"):
+        write_summary(tmp_path, day)
+    captured = {}
+
+    def recalculate(group, report_dates, store_dir, source_date, mtd_start_date=None):
+        captured.update({
+            "report_dates": list(report_dates),
+            "source_date": source_date,
+            "mtd_start_date": mtd_start_date,
+        })
+        return [
+            (day, write_summary(tmp_path, day, group["summary"], store_dir / "补数日报"))
+            for day in report_dates
+        ]
+
+    monkeypatch.setattr(service, "_generate_missing_daily_summaries", recalculate)
+
+    result = service.generate_monthly_summaries(
+        ["junyi"],
+        period_start="260630",
+        period_end="260702",
+    )
+    group = result["groups"][0]
+    output_path = Path(group["summary"]["path"])
+
+    assert result["selection_mode"] == "custom"
+    assert result["period_label"] == "6月30日-7月2日"
+    assert group["missing_dates"] == []
+    assert group["recalculated_dates"] == ["260630", "260701", "260702"]
+    assert captured == {
+        "report_dates": ["260630", "260701", "260702"],
+        "source_date": "260702",
+        "mtd_start_date": "260630",
+    }
+    assert len(group["source_files"]) == 3
+    workbook = load_workbook(output_path, read_only=True, data_only=True)
+    try:
+        sheet = workbook.active
+        assert sheet.cell(row=1, column=3).value == "骏宜0630"
+        assert sheet.cell(row=1, column=4).value == "骏宜0701"
+        assert sheet.cell(row=1, column=5).value == "骏宜0702"
+    finally:
+        workbook.close()
+
+
+def test_custom_period_backfill_uses_period_end_and_only_missing_dates(tmp_path, monkeypatch):
+    service = DailyReportService(tmp_path)
+    write_summary(tmp_path, "260630")
+    write_summary(tmp_path, "260702")
+    captured = {}
+
+    def generate_missing(group, report_dates, store_dir, source_date, mtd_start_date=None):
+        captured.update({
+            "report_dates": list(report_dates),
+            "source_date": source_date,
+            "mtd_start_date": mtd_start_date,
+        })
+        return [
+            (day, write_summary(tmp_path, day, group["summary"], store_dir / "补数日报"))
+            for day in report_dates
+        ]
+
+    monkeypatch.setattr(service, "_generate_missing_daily_summaries", generate_missing)
+
+    result = service.generate_monthly_summaries(
+        ["junyi"],
+        period_start="260630",
+        period_end="260702",
+    )
+
+    assert captured == {
+        "report_dates": ["260630", "260701", "260702"],
+        "source_date": "260702",
+        "mtd_start_date": "260630",
+    }
+    group = result["groups"][0]
+    assert group["supplemented_dates"] == ["260701"]
+    assert group["recalculated_dates"] == ["260630", "260701", "260702"]
+    assert group["output_folder"] == "骏宜_0630-0702_缺失"
+
+    image, filename = service.get_monthly_summary_image(
+        result["period"],
+        "junyi",
+        output_folder=group["output_folder"],
+    )
+    assert image.startswith(bytes([137, 80, 78, 71]))
+    assert filename.endswith("_monthly.png")
+
+
 
 def test_monthly_backfill_uses_period_end_raw_snapshot_for_every_missing_day(tmp_path, monkeypatch):
     service = DailyReportService(tmp_path)
@@ -304,7 +430,14 @@ def test_monthly_backfill_uses_period_end_raw_snapshot_for_every_missing_day(tmp
 
     captured = []
 
-    def run_from_snapshot(account_config, report_date, output_dir, source_files, log_path):
+    def run_from_snapshot(
+        account_config,
+        report_date,
+        output_dir,
+        source_files,
+        log_path,
+        mtd_start_date=None,
+    ):
         captured.append((report_date, source_files["clue"], source_files["call"]))
         generated = write_guangzhou_new_summary(
             tmp_path,
@@ -331,6 +464,149 @@ def test_monthly_backfill_uses_period_end_raw_snapshot_for_every_missing_day(tmp
         ("260603", clue_file, call_file),
         ("260604", clue_file, call_file),
     ]
+
+
+def test_cross_month_backfill_uses_each_months_snapshot(tmp_path, monkeypatch):
+    service = DailyReportService(tmp_path)
+    account = {"name": "广西龙星行"}
+    monkeypatch.setattr(service, "_load_accounts", lambda: [account])
+    resolved_snapshots = []
+    processed_snapshots = []
+
+    def resolve_snapshot(account_config, source_date, store_dir):
+        resolved_snapshots.append(source_date)
+        return {
+            "clue": tmp_path / f"clue-{source_date}.xlsx",
+            "call": tmp_path / f"call-{source_date}.xlsx",
+        }
+
+    def run_from_snapshot(
+        account_config,
+        report_date,
+        output_dir,
+        source_files,
+        log_path,
+        mtd_start_date=None,
+    ):
+        processed_snapshots.append((report_date, source_files["clue"].stem))
+        write_summary(tmp_path, report_date, "南宁新车首呼", base_dir=output_dir.parent)
+
+    monkeypatch.setattr(service, "_resolve_monthly_snapshot_files", resolve_snapshot)
+    monkeypatch.setattr(service, "_run_daily_processor_from_snapshot", run_from_snapshot)
+    group = {
+        "key": "nanning",
+        "title": "南宁",
+        "summary": "南宁新车首呼",
+        "stores": ["广西龙星行"],
+    }
+
+    generated = service._generate_missing_daily_summaries(
+        group,
+        ["260613", "260704"],
+        tmp_path / "monthly",
+        "260713",
+    )
+
+    assert resolved_snapshots == ["260630", "260713"]
+    assert processed_snapshots == [
+        ("260613", "clue-260630"),
+        ("260704", "clue-260713"),
+    ]
+    assert [day for day, _ in generated] == ["260613", "260704"]
+
+
+def test_account_mtd_start_date_limits_custom_period_backfill(tmp_path, monkeypatch):
+    service = DailyReportService(tmp_path)
+    account = {
+        "name": "广西龙星行",
+        "mtd_start_date": "260620",
+    }
+    monkeypatch.setattr(service, "_load_accounts", lambda: [account])
+    captured = {}
+
+    def resolve_period_snapshot(account_config, period_start, period_end, store_dir):
+        captured["snapshot_period"] = (period_start, period_end)
+        return {
+            "clue": tmp_path / "clue.xlsx",
+            "call": tmp_path / "call.xlsx",
+        }
+
+    def run_from_snapshot(
+        account_config,
+        report_date,
+        output_dir,
+        source_files,
+        log_path,
+        mtd_start_date=None,
+    ):
+        captured["processor_mtd_start_date"] = mtd_start_date
+        write_summary(
+            tmp_path,
+            report_date,
+            "南宁新车首呼",
+            base_dir=output_dir.parent,
+        )
+
+    monkeypatch.setattr(service, "_resolve_period_snapshot_files", resolve_period_snapshot)
+    monkeypatch.setattr(service, "_run_daily_processor_from_snapshot", run_from_snapshot)
+    group = {
+        "key": "nanning",
+        "title": "南宁",
+        "summary": "南宁新车首呼",
+        "stores": ["广西龙星行"],
+    }
+
+    generated = service._generate_missing_daily_summaries(
+        group,
+        ["260621"],
+        tmp_path / "monthly",
+        "260713",
+        mtd_start_date="260613",
+    )
+
+    assert [day for day, _ in generated] == ["260621"]
+    assert captured == {
+        "snapshot_period": ("260620", "260713"),
+        "processor_mtd_start_date": "260620",
+    }
+
+
+def test_period_snapshot_combines_monthly_clues_and_calls(tmp_path):
+    service = DailyReportService(tmp_path)
+    account = {"name": "广西龙星行"}
+    june_raw = tmp_path / "data" / "260630" / "原始数据"
+    july_raw = tmp_path / "data" / "260713" / "原始数据"
+    june_raw.mkdir(parents=True)
+    july_raw.mkdir(parents=True)
+
+    pd.DataFrame({"线索ID": ["1", "2"], "线索下发时间": ["2026-06-13", "2026-06-30"]}).to_excel(
+        june_raw / "广西龙星行-outcall-线索明细-260630.xlsx",
+        index=False,
+    )
+    pd.DataFrame({"线索ID": ["2", "3"], "线索下发时间": ["2026-06-30", "2026-07-01"]}).to_excel(
+        july_raw / "广西龙星行-outcall-线索明细-260713.xlsx",
+        index=False,
+    )
+    pd.DataFrame({"线索ID": ["1", "2"], "结束时间": ["2026-06-13", "2026-06-30"]}).to_excel(
+        june_raw / "广西龙星行-aicc-话单-260630.xlsx",
+        index=False,
+    )
+    pd.DataFrame({"线索ID": ["2", "3"], "结束时间": ["2026-07-01", "2026-07-13"]}).to_excel(
+        july_raw / "广西龙星行-aicc-话单-260713.xlsx",
+        index=False,
+    )
+
+    files = service._resolve_period_snapshot_files(
+        account,
+        "260613",
+        "260713",
+        tmp_path / "monthly",
+    )
+
+    clues = pd.read_excel(files["clue"], dtype={"线索ID": str})
+    calls = pd.read_excel(files["call"], dtype={"线索ID": str})
+    assert clues["线索ID"].tolist() == ["1", "2", "3"]
+    assert calls["线索ID"].tolist() == ["1", "2", "2", "3"]
 
 def test_monthly_generation_uses_source_when_redundant_copy_is_locked(tmp_path, monkeypatch):
     service = DailyReportService(tmp_path)
@@ -385,3 +661,37 @@ def test_monthly_api_exposes_months_and_passes_target_month(tmp_path, monkeypatc
     assert captured["groups"] == ["junyi"]
     assert captured["target_month"] == "2606"
     assert captured["force_overwrite"] is True
+
+
+def test_monthly_api_passes_custom_period(tmp_path, monkeypatch):
+    service = DailyReportService(tmp_path)
+    captured = {}
+
+    def generate(**kwargs):
+        captured.update(kwargs)
+        return {
+            "selection_mode": "custom",
+            "period": "260613_260713",
+            "groups": [],
+            "errors": [],
+        }
+
+    monkeypatch.setattr(service, "generate_monthly_summaries", generate)
+    app = FastAPI()
+    app.include_router(create_router(service))
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/daily-report/monthly-summary",
+        json={
+            "groups": ["junyi"],
+            "period_start": "260613",
+            "period_end": "260713",
+            "force_overwrite": False,
+        },
+    )
+
+    assert response.status_code == 200
+    assert captured["period_start"] == "260613"
+    assert captured["period_end"] == "260713"
+    assert captured["target_month"] is None

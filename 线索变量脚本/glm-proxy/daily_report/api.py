@@ -73,6 +73,8 @@ def create_router(service: DailyReportService) -> APIRouter:
                 groups=[str(item).strip() for item in groups if str(item).strip()],
                 report_date=str(payload.get('report_date') or '').strip() or None,
                 target_month=str(payload.get('target_month') or '').strip() or None,
+                period_start=str(payload.get('period_start') or '').strip() or None,
+                period_end=str(payload.get('period_end') or '').strip() or None,
             )
         except (InvalidReportDateError, InvalidReportStoreError, InvalidReportGroupError) as exc:
             return error_response(exc.code, exc.message, exc.detail, 422)
@@ -90,6 +92,8 @@ def create_router(service: DailyReportService) -> APIRouter:
                 report_date=str(payload.get('report_date') or '').strip() or None,
                 force_overwrite=bool(payload.get('force_overwrite') or False),
                 target_month=str(payload.get('target_month') or '').strip() or None,
+                period_start=str(payload.get('period_start') or '').strip() or None,
+                period_end=str(payload.get('period_end') or '').strip() or None,
             )
         except (InvalidReportDateError, InvalidReportStoreError, InvalidReportGroupError) as exc:
             return error_response(exc.code, exc.message, exc.detail, 422)

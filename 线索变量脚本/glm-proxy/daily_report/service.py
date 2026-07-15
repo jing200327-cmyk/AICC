@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import ast
 import asyncio
 import calendar
+import hashlib
 import html
-import importlib
 import json
 import os
 import re
@@ -20,6 +21,7 @@ from io import BytesIO
 from pathlib import Path
 from typing import Any
 
+import pandas as pd
 from openpyxl import load_workbook
 from openpyxl.utils import get_column_letter
 from PIL import Image, ImageDraw, ImageFont
@@ -159,6 +161,132 @@ class DailyReportService:
                 stores.append({'code': name, 'name': name})
         return stores
 
+    def _preview_groups(self) -> list[dict[str, Any]]:
+        try:
+            accounts = self._load_accounts()
+        except DailyReportError:
+            return [dict(group) for group in REPORT_PREVIEW_GROUPS]
+
+        groups = []
+        used_static_keys = set()
+        for account in accounts:
+            account_name = str(account.get('name') or '').strip()
+            static_store_groups = [
+                dict(group)
+                for group in REPORT_PREVIEW_GROUPS
+                if account_name in group.get('stores', [])
+            ]
+            has_group_config = bool(
+                str(account.get('group_by_call_field') or '').strip()
+                and account.get('required_group_values')
+            )
+            is_known_multi_store = (
+                len(static_store_groups) > 1
+                or any(len(group.get('reports') or []) > 1 for group in static_store_groups)
+            )
+            generated_groups = (
+                static_store_groups
+                if is_known_multi_store and not has_group_config
+                else self._account_preview_groups(account)
+            )
+            for generated in generated_groups:
+                static_match = next(
+                    (
+                        group for group in REPORT_PREVIEW_GROUPS
+                        if group['key'] not in used_static_keys
+                        and group.get('stores') == generated.get('stores')
+                        and group.get('reports') == generated.get('reports')
+                        and group.get('summary') == generated.get('summary')
+                    ),
+                    None,
+                )
+                if static_match:
+                    groups.append(dict(static_match))
+                    used_static_keys.add(static_match['key'])
+                else:
+                    groups.append(generated)
+        static_order = {
+            group['key']: index
+            for index, group in enumerate(REPORT_PREVIEW_GROUPS)
+        }
+        groups.sort(key=lambda group: static_order.get(group['key'], len(static_order)))
+        return groups
+
+    def _monthly_groups(self) -> list[dict[str, Any]]:
+        groups = []
+        for preview_group in self._preview_groups():
+            if preview_group['key'] != 'guangzhou_new':
+                groups.append(dict(preview_group))
+                continue
+            groups.extend(
+                dict(group)
+                for group in MONTHLY_SUMMARY_GROUPS
+                if group['key'] in {'guangzhou_new_haizhu', 'guangzhou_new_panyu'}
+            )
+        return groups
+
+    def _account_preview_groups(self, account: dict[str, Any]) -> list[dict[str, Any]]:
+        account_name = str(account.get('name') or '').strip()
+        if not account_name:
+            return []
+
+        required_values = [
+            str(value or '').strip()
+            for value in account.get('required_group_values') or []
+            if str(value or '').strip()
+        ]
+        group_field = str(account.get('group_by_call_field') or '').strip()
+        if not group_field or not required_values:
+            return [self._custom_preview_group(account_name, account_name, account_name, account_name)]
+
+        display_names = account.get('group_display_names') or {}
+        summary_names = account.get('group_summary_names') or {}
+        reports = [
+            str(display_names.get(value) or f'{account_name}-{self._safe_output_name(value)}').strip()
+            for value in required_values
+        ]
+        merge_summary_title = str(account.get('merge_summary_title') or '').strip()
+        if merge_summary_title:
+            return [{
+                'key': self._custom_group_key(account_name, merge_summary_title),
+                'title': merge_summary_title,
+                'reports': reports,
+                'summary': merge_summary_title,
+                'stores': [account_name],
+            }]
+
+        return [
+            self._custom_preview_group(
+                account_name,
+                report_name,
+                str(summary_names.get(value) or report_name).strip(),
+                report_name,
+            )
+            for value, report_name in zip(required_values, reports)
+        ]
+
+    def _custom_preview_group(
+        self,
+        account_name: str,
+        report_name: str,
+        summary_name: str,
+        title: str,
+    ) -> dict[str, Any]:
+        return {
+            'key': self._custom_group_key(account_name, summary_name),
+            'title': title,
+            'reports': [report_name],
+            'summary': summary_name,
+            'stores': [account_name],
+        }
+
+    def _custom_group_key(self, account_name: str, summary_name: str) -> str:
+        digest = hashlib.sha1(f'{account_name}|{summary_name}'.encode('utf-8')).hexdigest()[:12]
+        return f'daily_custom_{digest}'
+
+    def _safe_output_name(self, value: str) -> str:
+        return re.sub(r'[\\/:*?"<>|]+', '_', str(value)).strip() or '未命名'
+
     def start_job(self, report_date: str | None = None, store: str = 'all', refresh_clue: bool = False) -> DailyReportJob:
         report_date = self._validate_report_date(report_date)
         store = (store or 'all').strip()
@@ -193,7 +321,7 @@ class DailyReportService:
         reports = {item.name: asdict(item) for item in self._collect_reports(report_date, 'all', '')}
         summaries = self._collect_summaries(report_date)
         groups = []
-        for group in REPORT_PREVIEW_GROUPS:
+        for group in self._preview_groups():
             if not self._preview_group_matches_store(group, store):
                 continue
             report_items = []
@@ -243,7 +371,7 @@ class DailyReportService:
                 'name': group['title'],
                 'summary': group['summary'],
             }
-            for group in MONTHLY_SUMMARY_GROUPS
+            for group in self._monthly_groups()
         ]
 
     def list_monthly_summary_months(self) -> list[dict[str, str]]:
@@ -271,8 +399,15 @@ class DailyReportService:
         groups: list[str],
         report_date: str | None = None,
         target_month: str | None = None,
+        period_start: str | None = None,
+        period_end: str | None = None,
     ) -> dict[str, Any]:
-        period_info = self._resolve_monthly_period(target_month, report_date)
+        period_info = self._resolve_monthly_period(
+            target_month,
+            report_date,
+            period_start,
+            period_end,
+        )
         selected_groups = self._resolve_monthly_groups(groups)
         period_start = period_info['period_start']
         period_end = period_info['period_end']
@@ -286,16 +421,34 @@ class DailyReportService:
             expected_date_set = set(expected_dates)
             source_files = [
                 (day, path)
-                for day, path in self._monthly_summary_source_files(period_end, group['summary'])
+                for day, path in self._monthly_summary_source_files(
+                    period_end,
+                    group['summary'],
+                    period_start=period_start,
+                )
                 if day in expected_date_set
             ]
             available_dates = [day for day, _ in source_files]
             missing_dates = [day for day in expected_dates if day not in set(available_dates)]
-            output_folder = self._monthly_output_folder(display_name, period_info['month'], bool(missing_dates))
+            output_folder = self._monthly_output_folder(
+                display_name,
+                period_info['month'],
+                bool(missing_dates),
+                period_start=period_start,
+                period_end=period_end,
+                selection_mode=period_info['selection_mode'],
+            )
             store_dir = period_dir / output_folder
             output_path = store_dir / f'{display_name}_月度横向对比表.xlsx'
             existing_dirs = [
-                path for path in self._monthly_store_dir_candidates(period_dir, display_name, period_info['month'])
+                path for path in self._monthly_store_dir_candidates(
+                    period_dir,
+                    display_name,
+                    period_info['month'],
+                    period_start=period_start,
+                    period_end=period_end,
+                    selection_mode=period_info['selection_mode'],
+                )
                 if path.exists()
             ]
             items.append({
@@ -321,8 +474,10 @@ class DailyReportService:
             })
         return {
             'report_date': period_end,
-            'target_month': period_info['month'],
+            'target_month': period_info['target_month'],
             'month_label': period_info['month_label'],
+            'selection_mode': period_info['selection_mode'],
+            'period_label': period_info['period_label'],
             'period_start': period_start,
             'period_end': period_end,
             'period': period,
@@ -337,15 +492,23 @@ class DailyReportService:
         report_date: str | None = None,
         force_overwrite: bool = False,
         target_month: str | None = None,
+        period_start: str | None = None,
+        period_end: str | None = None,
     ) -> dict[str, Any]:
-        status = self.get_monthly_summary_status(groups, report_date=report_date, target_month=target_month)
+        status = self.get_monthly_summary_status(
+            groups,
+            report_date=report_date,
+            target_month=target_month,
+            period_start=period_start,
+            period_end=period_end,
+        )
         selected_groups = self._resolve_monthly_groups(groups)
         status_by_key = {item['key']: item for item in status['items']}
         period_dir = Path(status['period_dir'])
         generated = []
         errors = []
         skipped = []
-        supplement_cache: dict[tuple[str, tuple[str, ...], str], list[tuple[str, Path]]] = {}
+        supplement_cache: dict[tuple[str, tuple[str, ...], str, str], list[tuple[str, Path]]] = {}
 
         existing_items = [item for item in status['items'] if item['store_dir_exists']]
         if existing_items and not force_overwrite:
@@ -365,7 +528,11 @@ class DailyReportService:
                     'group': group['key'],
                     'name': display_name,
                     'launch_date': item['launch_date'],
-                    'reason': f"{display_name}于{item['launch_date']}上线，所选月份无可统计数据，已跳过",
+                    'reason': (
+                        f"{display_name}于{item['launch_date']}上线，"
+                        f"{'所选月份' if status['selection_mode'] == 'month' else '所选时间范围'}"
+                        "无可统计数据，已跳过"
+                    ),
                 })
                 continue
 
@@ -373,21 +540,34 @@ class DailyReportService:
             store_dir.mkdir(parents=True, exist_ok=True)
 
             expected_date_set = set(item['expected_dates'])
-            standard_files = [
+            is_custom_period = status['selection_mode'] == 'custom'
+            standard_files = [] if is_custom_period else [
                 (day, path)
-                for day, path in self._monthly_summary_source_files(status['period_end'], summary_name)
+                for day, path in self._monthly_summary_source_files(
+                    status['period_end'],
+                    summary_name,
+                    period_start=status['period_start'],
+                )
                 if day in expected_date_set
             ]
             supplemented_files: list[tuple[str, Path]] = []
+            dates_to_generate = item['expected_dates'] if is_custom_period else item['missing_dates']
+            mtd_start_date = status['period_start'] if is_custom_period else ''
             try:
-                if item['missing_dates']:
-                    cache_key = (summary_name, tuple(item['missing_dates']), status['period_end'])
+                if dates_to_generate:
+                    cache_key = (
+                        summary_name,
+                        tuple(dates_to_generate),
+                        status['period_end'],
+                        mtd_start_date,
+                    )
                     if cache_key not in supplement_cache:
                         supplement_cache[cache_key] = self._generate_missing_daily_summaries(
                             group,
-                            item['missing_dates'],
+                            dates_to_generate,
                             store_dir,
                             status['period_end'],
+                            mtd_start_date=mtd_start_date or None,
                         )
                     supplemented_files = supplement_cache[cache_key]
             except DailyReportError as exc:
@@ -445,11 +625,22 @@ class DailyReportService:
                 'period': status['period'],
                 'target_month': status['target_month'],
                 'month_label': status['month_label'],
+                'selection_mode': status['selection_mode'],
+                'period_label': status['period_label'],
                 'output_folder': item['output_folder'],
                 'output_dir': str(store_dir),
                 'source_files': copied_files,
                 'missing_dates': item['missing_dates'],
-                'supplemented_dates': [day for day, _ in supplemented_files],
+                'supplemented_dates': (
+                    item['missing_dates']
+                    if is_custom_period
+                    else [day for day, _ in supplemented_files]
+                ),
+                'recalculated_dates': (
+                    [day for day, _ in supplemented_files]
+                    if is_custom_period
+                    else []
+                ),
                 'summary': preview,
             })
 
@@ -461,6 +652,8 @@ class DailyReportService:
             'report_date': status['period_end'],
             'target_month': status['target_month'],
             'month_label': status['month_label'],
+            'selection_mode': status['selection_mode'],
+            'period_label': status['period_label'],
             'period_start': status['period_start'],
             'period_end': status['period_end'],
             'period': status['period'],
@@ -484,19 +677,30 @@ class DailyReportService:
             group_config = self._resolve_monthly_group(str(group or '').strip())
         display_name = group_config['title']
         month = period[:4]
+        period_start, period_end = period.split('_', 1)
         allowed_folders = {
             display_name,
             self._monthly_output_folder(display_name, month, True),
+            self._monthly_output_folder(
+                display_name,
+                month,
+                True,
+                period_start=period_start,
+                period_end=period_end,
+                selection_mode='custom',
+            ),
         }
         folder = str(output_folder or '').strip() or display_name
         if folder not in allowed_folders:
             raise InvalidReportGroupError(folder)
         summary_path = self.project_root / 'data' / period / folder / f'{display_name}_月度横向对比表.xlsx'
         if not summary_path.exists() and not output_folder:
-            fallback_folder = self._monthly_output_folder(display_name, month, True)
-            fallback = self.project_root / 'data' / period / fallback_folder / f'{display_name}_月度横向对比表.xlsx'
-            if fallback.exists():
-                summary_path = fallback
+            fallback_folders = allowed_folders - {display_name}
+            for fallback_folder in fallback_folders:
+                fallback = self.project_root / 'data' / period / fallback_folder / f'{display_name}_月度横向对比表.xlsx'
+                if fallback.exists():
+                    summary_path = fallback
+                    break
         if not summary_path.exists():
             raise DailyReportError(f'Monthly summary file does not exist: {summary_path.name}')
         image_bytes = self._summary_image(summary_path)
@@ -509,7 +713,30 @@ class DailyReportService:
         self,
         target_month: str | None,
         report_date: str | None,
+        period_start: str | None = None,
+        period_end: str | None = None,
     ) -> dict[str, str]:
+        custom_start = str(period_start or '').strip()
+        custom_end = str(period_end or '').strip()
+        if custom_start or custom_end:
+            if not custom_start or not custom_end or target_month:
+                raise InvalidReportDateError(f'{custom_start}_{custom_end}')
+            start = self._validate_report_date(custom_start)
+            end = self._validate_report_date(custom_end)
+            if start > end:
+                raise InvalidReportDateError(f'{start}_{end}')
+            label = self._period_label(start, end)
+            return {
+                'month': start[:4],
+                'target_month': '',
+                'month_label': label,
+                'selection_mode': 'custom',
+                'period_label': label,
+                'period_start': start,
+                'period_end': end,
+                'period': f'{start}_{end}',
+            }
+
         if target_month:
             value = str(target_month).strip()
             options = {item['value']: item for item in self.list_monthly_summary_months()}
@@ -518,7 +745,10 @@ class DailyReportService:
             selected = options[value]
             return {
                 'month': selected['value'],
+                'target_month': selected['value'],
                 'month_label': f"{int(selected['value'][-2:])}月",
+                'selection_mode': 'month',
+                'period_label': f"{int(selected['value'][-2:])}月",
                 'period_start': selected['period_start'],
                 'period_end': selected['period_end'],
                 'period': f"{selected['period_start']}_{selected['period_end']}",
@@ -528,11 +758,19 @@ class DailyReportService:
         start = f'{end[:4]}01'
         return {
             'month': end[:4],
+            'target_month': end[:4],
             'month_label': f'{int(end[2:4])}月',
+            'selection_mode': 'month',
+            'period_label': f'{int(end[2:4])}月',
             'period_start': start,
             'period_end': end,
             'period': f'{start}_{end}',
         }
+
+    def _period_label(self, period_start: str, period_end: str) -> str:
+        start = datetime.strptime(period_start, '%y%m%d')
+        end = datetime.strptime(period_end, '%y%m%d')
+        return f'{start.month}月{start.day}日-{end.month}月{end.day}日'
 
     def _date_range(self, start: str, end: str) -> list[str]:
         start_date = datetime.strptime(start, '%y%m%d').date()
@@ -552,7 +790,7 @@ class DailyReportService:
     ) -> dict[str, Any]:
         try:
             configured_accounts = self._load_accounts()
-        except (ImportError, ModuleNotFoundError):
+        except (ImportError, ModuleNotFoundError, DailyReportError):
             configured_accounts = []
         accounts = {
             str(account.get('name') or '').strip(): account
@@ -611,19 +849,44 @@ class DailyReportService:
         launch_date = self._account_launch_date(account)
         return not launch_date or report_date >= launch_date
 
-    def _monthly_output_folder(self, display_name: str, month: str, has_missing: bool) -> str:
+    def _monthly_output_folder(
+        self,
+        display_name: str,
+        month: str,
+        has_missing: bool,
+        period_start: str = '',
+        period_end: str = '',
+        selection_mode: str = 'month',
+    ) -> str:
         if not has_missing:
             return display_name
+        if selection_mode == 'custom' and period_start and period_end:
+            return f'{display_name}_{period_start[-4:]}-{period_end[-4:]}_缺失'
         month_names = {
             1: '一月', 2: '二月', 3: '三月', 4: '四月', 5: '五月', 6: '六月',
             7: '七月', 8: '八月', 9: '九月', 10: '十月', 11: '十一月', 12: '十二月',
         }
         return f"{display_name}_{month_names[int(month[-2:])]}_缺失"
 
-    def _monthly_store_dir_candidates(self, period_dir: Path, display_name: str, month: str) -> list[Path]:
+    def _monthly_store_dir_candidates(
+        self,
+        period_dir: Path,
+        display_name: str,
+        month: str,
+        period_start: str = '',
+        period_end: str = '',
+        selection_mode: str = 'month',
+    ) -> list[Path]:
         return [
             period_dir / display_name,
-            period_dir / self._monthly_output_folder(display_name, month, True),
+            period_dir / self._monthly_output_folder(
+                display_name,
+                month,
+                True,
+                period_start=period_start,
+                period_end=period_end,
+                selection_mode=selection_mode,
+            ),
         ]
 
     def _generate_missing_daily_summaries(
@@ -632,6 +895,7 @@ class DailyReportService:
         missing_dates: list[str],
         store_dir: Path,
         source_date: str,
+        mtd_start_date: str | None = None,
     ) -> list[tuple[str, Path]]:
         accounts = {
             str(account.get('name') or '').strip(): account
@@ -649,14 +913,8 @@ class DailyReportService:
         supplement_root.mkdir(parents=True, exist_ok=True)
         log_root.mkdir(parents=True, exist_ok=True)
 
-        snapshot_files = {
-            account_name: self._resolve_monthly_snapshot_files(
-                accounts[account_name],
-                source_date,
-                store_dir,
-            )
-            for account_name in account_names
-        }
+        snapshot_files: dict[tuple[str, str], dict[str, Path]] = {}
+        period_snapshot_files: dict[tuple[str, str], dict[str, Path]] = {}
         generated = []
 
         for report_date in missing_dates:
@@ -668,14 +926,42 @@ class DailyReportService:
                 continue
 
             day_dir = supplement_root / report_date
+            snapshot_date = self._monthly_snapshot_date(report_date, source_date)
             for account_name in eligible_account_names:
+                account = accounts[account_name]
+                account_launch_date = self._account_launch_date(account)
+                effective_mtd_start = (
+                    max(mtd_start_date, account_launch_date)
+                    if mtd_start_date and account_launch_date
+                    else (mtd_start_date or account_launch_date)
+                )
+                if effective_mtd_start:
+                    snapshot_key = (account_name, effective_mtd_start)
+                    if snapshot_key not in period_snapshot_files:
+                        period_snapshot_files[snapshot_key] = self._resolve_period_snapshot_files(
+                            account,
+                            effective_mtd_start,
+                            source_date,
+                            store_dir,
+                        )
+                    source_files = period_snapshot_files[snapshot_key]
+                else:
+                    snapshot_key = (account_name, snapshot_date)
+                    if snapshot_key not in snapshot_files:
+                        snapshot_files[snapshot_key] = self._resolve_monthly_snapshot_files(
+                            account,
+                            snapshot_date,
+                            store_dir,
+                        )
+                    source_files = snapshot_files[snapshot_key]
                 log_path = log_root / f'{report_date}_{account_name}.log'
                 self._run_daily_processor_from_snapshot(
-                    accounts[account_name],
+                    account,
                     report_date,
                     day_dir,
-                    snapshot_files[account_name],
+                    source_files,
                     log_path,
+                    mtd_start_date=effective_mtd_start or None,
                 )
 
             summary_dir = day_dir / '汇总表'
@@ -694,6 +980,91 @@ class DailyReportService:
                 )
             generated.append((report_date, matches[0]))
         return generated
+
+    def _monthly_snapshot_date(self, report_date: str, period_end: str) -> str:
+        report_day = datetime.strptime(report_date, '%y%m%d').date()
+        end_day = datetime.strptime(period_end, '%y%m%d').date()
+        if (report_day.year, report_day.month) == (end_day.year, end_day.month):
+            return period_end
+        month_end = date(
+            report_day.year,
+            report_day.month,
+            calendar.monthrange(report_day.year, report_day.month)[1],
+        )
+        return min(month_end, end_day).strftime('%y%m%d')
+
+    def _resolve_period_snapshot_files(
+        self,
+        account: dict[str, Any],
+        period_start: str,
+        period_end: str,
+        store_dir: Path,
+    ) -> dict[str, Path]:
+        account_name = str(account.get('name') or '').strip()
+        snapshot_dates = self._period_snapshot_dates(period_start, period_end)
+        monthly_files = [
+            self._resolve_monthly_snapshot_files(account, snapshot_date, store_dir)
+            for snapshot_date in snapshot_dates
+        ]
+        if len(monthly_files) == 1:
+            return monthly_files[0]
+
+        raw_dir = store_dir / '补数基准' / f'{period_start}_{period_end}' / '原始数据'
+        raw_dir.mkdir(parents=True, exist_ok=True)
+        clue_path = raw_dir / f'{account_name}-outcall-线索明细-{period_end}.xlsx'
+        call_path = raw_dir / f'{account_name}-aicc-话单-{period_end}.xlsx'
+        if clue_path.exists() and call_path.exists():
+            return {'clue': clue_path, 'call': call_path}
+
+        self._merge_snapshot_excels(
+            [files['clue'] for files in monthly_files],
+            clue_path,
+            deduplicate_clue_ids=True,
+        )
+        self._merge_snapshot_excels(
+            [files['call'] for files in monthly_files],
+            call_path,
+            deduplicate_clue_ids=False,
+        )
+        return {'clue': clue_path, 'call': call_path}
+
+    def _period_snapshot_dates(self, period_start: str, period_end: str) -> list[str]:
+        start_day = datetime.strptime(period_start, '%y%m%d').date()
+        end_day = datetime.strptime(period_end, '%y%m%d').date()
+        cursor = date(start_day.year, start_day.month, 1)
+        result = []
+        while cursor <= end_day:
+            current_month_end = date(
+                cursor.year,
+                cursor.month,
+                calendar.monthrange(cursor.year, cursor.month)[1],
+            )
+            result.append(min(current_month_end, end_day).strftime('%y%m%d'))
+            cursor = current_month_end + timedelta(days=1)
+        return result
+
+    def _merge_snapshot_excels(
+        self,
+        source_paths: list[Path],
+        output_path: Path,
+        deduplicate_clue_ids: bool,
+    ) -> None:
+        frames = [
+            pd.read_excel(path, engine='openpyxl', dtype={'线索ID': str})
+            for path in source_paths
+        ]
+        if not frames:
+            raise DailyReportError(f'跨月原始数据为空：{output_path.name}')
+        merged = pd.concat(frames, ignore_index=True)
+        if '线索ID' in merged.columns:
+            merged['线索ID'] = merged['线索ID'].astype(str).str.strip()
+        if deduplicate_clue_ids and '线索ID' in merged.columns:
+            merged = merged.drop_duplicates(subset=['线索ID'], keep='first')
+        else:
+            merged = merged.drop_duplicates()
+        temp_path = output_path.with_name(f'{output_path.stem}.tmp{output_path.suffix}')
+        merged.to_excel(temp_path, index=False, engine='openpyxl')
+        temp_path.replace(output_path)
 
     def _resolve_monthly_snapshot_files(
         self,
@@ -758,6 +1129,7 @@ class DailyReportService:
         output_dir: Path,
         source_files: dict[str, Path],
         log_path: Path,
+        mtd_start_date: str | None = None,
     ) -> None:
         account_name = str(account.get('name') or '').strip()
         command = [
@@ -777,7 +1149,11 @@ class DailyReportService:
             'clue_match_limit': '--clue_match_limit',
         }
         for key, flag in scalar_options.items():
-            value = account.get(key)
+            value = (
+                mtd_start_date
+                if key == 'mtd_start_date' and mtd_start_date
+                else account.get(key)
+            )
             if value not in (None, ''):
                 command.extend([flag, str(value)])
         list_options = {
@@ -810,8 +1186,8 @@ class DailyReportService:
         )
         log_path.parent.mkdir(parents=True, exist_ok=True)
         source_note = (
-            f"月度补跑统一快照：{source_files['clue']}\n"
-            f"月度补跑统一话单：{source_files['call']}\n\n"
+            f"月度补跑所属月份快照：{source_files['clue']}\n"
+            f"月度补跑所属月份话单：{source_files['call']}\n\n"
         )
         log_path.write_text(
             source_note + (result.stdout or '') + (result.stderr or ''),
@@ -851,13 +1227,14 @@ class DailyReportService:
             raise last_error
 
     def _resolve_monthly_groups(self, groups: list[str]) -> list[dict[str, Any]]:
+        monthly_groups = self._monthly_groups()
         resolved = []
         seen = set()
         for raw_value in groups or []:
             value = str(raw_value or '').strip()
             if value in {'guangzhou_new', '广州新车'}:
                 matched_groups = [
-                    group for group in MONTHLY_SUMMARY_GROUPS
+                    group for group in monthly_groups
                     if group['key'] in {'guangzhou_new_haizhu', 'guangzhou_new_panyu'}
                 ]
             else:
@@ -871,32 +1248,38 @@ class DailyReportService:
         return resolved
 
     def _resolve_monthly_group(self, value: str) -> dict[str, Any]:
+        monthly_groups = self._monthly_groups()
         matches = [
-            group for group in MONTHLY_SUMMARY_GROUPS
+            group for group in monthly_groups
             if value in {group['key'], group['title']}
         ]
         if len(matches) == 1:
             return matches[0]
         summary_matches = [
-            group for group in MONTHLY_SUMMARY_GROUPS
+            group for group in monthly_groups
             if value == group['summary']
         ]
         if len(summary_matches) == 1:
             return summary_matches[0]
         raise InvalidReportGroupError(value)
 
-    def _monthly_summary_source_files(self, report_date: str, summary_name: str) -> list[tuple[str, Path]]:
+    def _monthly_summary_source_files(
+        self,
+        report_date: str,
+        summary_name: str,
+        period_start: str | None = None,
+    ) -> list[tuple[str, Path]]:
         data_dir = self.project_root / 'data'
         if not data_dir.exists():
             return []
-        period_start = f'{report_date[:4]}01'
+        period_start = period_start or f'{report_date[:4]}01'
         suffix_template = self._summary_suffix
         source_files = []
         for day_dir in sorted(data_dir.iterdir(), key=lambda item: item.name):
             day = day_dir.name
             if not day_dir.is_dir() or not re.fullmatch(r'\d{6}', day):
                 continue
-            if day[:4] != report_date[:4] or day < period_start or day > report_date:
+            if day < period_start or day > report_date:
                 continue
             summary_dir = self._data_child_dir(day, '汇总表')
             suffix = suffix_template(day)
@@ -1277,12 +1660,23 @@ class DailyReportService:
         return store
 
     def _load_accounts(self) -> list[dict[str, Any]]:
-        tools_dir = self.project_root / 'tools'
-        if str(tools_dir) not in sys.path:
-            sys.path.insert(0, str(tools_dir))
-        import recorder
-        recorder = importlib.reload(recorder)
-        return list(recorder.ACCOUNTS)
+        recorder_path = self.project_root / 'tools' / 'recorder.py'
+        if not recorder_path.exists():
+            raise DailyReportError(f'Account configuration does not exist: {recorder_path}')
+        try:
+            module = ast.parse(recorder_path.read_text(encoding='utf-8'))
+            for node in module.body:
+                if (
+                    isinstance(node, ast.Assign)
+                    and any(isinstance(target, ast.Name) and target.id == 'ACCOUNTS' for target in node.targets)
+                ):
+                    accounts = ast.literal_eval(node.value)
+                    if not isinstance(accounts, list):
+                        raise DailyReportError('ACCOUNTS is not a list')
+                    return list(accounts)
+        except (OSError, SyntaxError, ValueError) as exc:
+            raise DailyReportError(f'Failed to load ACCOUNTS: {exc}') from exc
+        raise DailyReportError('ACCOUNTS configuration was not found')
 
     def _validate_preview_date(self, report_date: str | None) -> str:
         value = (report_date or '').strip()
@@ -1341,7 +1735,7 @@ class DailyReportService:
 
     def _resolve_preview_group(self, group: str) -> dict[str, Any]:
         value = (group or '').strip()
-        for item in REPORT_PREVIEW_GROUPS:
+        for item in self._preview_groups():
             if value in {item['key'], item['title'], item['summary']}:
                 return item
         raise InvalidReportGroupError(value)

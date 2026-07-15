@@ -1,0 +1,4 @@
+interface:
+  display_name: "Task State Resume"
+  short_description: "Safely resume work from a task snapshot."
+  default_prompt: "Use $task-state-resume to compare TASK_STATE.md with the current repository and continue safely."

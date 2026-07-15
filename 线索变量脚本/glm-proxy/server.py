@@ -17,6 +17,7 @@ import re
 import sys
 import time
 import uuid
+from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import Optional
 
@@ -61,7 +62,13 @@ logging.basicConfig(
 log = logging.getLogger("glm-proxy")
 
 # ─── FastAPI app ──────────────────────────────────────────────────────
-app = FastAPI(title="GLM Proxy", docs_url=None, redoc_url=None)
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    await outcall_service.restore_running_jobs()
+    yield
+
+
+app = FastAPI(title="GLM Proxy", docs_url=None, redoc_url=None, lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -107,7 +114,16 @@ OUTCALL_CONFIG_PATH = os.environ.get(
     "OUTCALL_CONFIG_PATH",
     os.path.join(OUTCALL_PROJECT_ROOT, "config.yaml"),
 )
-outcall_service = OutcallService(OUTCALL_CONFIG_PATH, OUTCALL_PROJECT_ROOT, split_import_service)
+OUTCALL_DB_PATH = os.environ.get(
+    "OUTCALL_DB_PATH",
+    os.path.join(BASE_DIR, "storage", "aicc.sqlite3"),
+)
+outcall_service = OutcallService(
+    OUTCALL_CONFIG_PATH,
+    OUTCALL_PROJECT_ROOT,
+    split_import_service,
+    OUTCALL_DB_PATH,
+)
 app.include_router(create_outcall_router(outcall_service))
 DAILY_REPORT_PROJECT_ROOT = os.environ.get(
     "DAILY_REPORT_PROJECT_ROOT",

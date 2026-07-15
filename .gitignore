@@ -29,6 +29,7 @@ __MACOSX/
 # Runtime outputs and logs
 *.log
 线索变量脚本/glm-proxy/outputs/
+线索变量脚本/glm-proxy/storage/
 # Sensitive operational data and generated artifacts
 *.xlsx
 *.xls

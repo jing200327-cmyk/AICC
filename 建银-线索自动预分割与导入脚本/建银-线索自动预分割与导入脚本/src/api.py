@@ -322,6 +322,28 @@ async def find_task_by_name(
     return None
 
 
+async def query_task_by_name(
+    session: aiohttp.ClientSession,
+    base_url: str,
+    tenant: TenantConfig,
+    token: str,
+    env_config,
+    task_name: str,
+) -> Tuple[bool, Optional[dict]]:
+    result = await get_task_status(
+        session, base_url, tenant, token, env_config,
+        robot_id=env_config.robot_id,
+    )
+    if not result:
+        return False, None
+    records = result.get("data", {}).get("records", [])
+    task = next(
+        (record for record in records if record.get("taskName") == task_name),
+        None,
+    )
+    return True, task
+
+
 async def wait_for_task_created(
     session: aiohttp.ClientSession,
     base_url: str,

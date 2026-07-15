@@ -12,6 +12,7 @@ from .api import (
     login,
     upload_file,
     initiate_outcall,
+    query_task_by_name,
     wait_for_task_created,
     wait_for_task_completion,
 )
@@ -125,6 +126,7 @@ async def process_tenant(
     tenant: TenantConfig,
     files: List[ExcelFile],
     status: TenantStatus,
+    resume_existing: bool = False,
 ):
     env_config = tenant.get_env_config(config.environment)
     base_url = config.base_url
@@ -178,6 +180,74 @@ async def process_tenant(
             status.queued_batches = [f.batch_name for f in files[i + 1:]]
 
             lead_count = count_leads_in_excel(excel_file.file_path)
+            task_name = tenant.task_name_template.format(
+                tenant=tenant.name, batch=batch_name,
+                date=datetime.now().strftime("%m%d"),
+            )
+
+            if resume_existing:
+                status.state = "查询平台任务"
+                status.message = f"检查批次 {batch_name} 是否已在平台创建"
+                query_ok, existing_task = await query_task_by_name(
+                    session, base_url, tenant, token, env_config, task_name
+                )
+                if not query_ok:
+                    status.state = "平台状态查询失败"
+                    status.task_state = "未确认"
+                    status.message = f"无法确认平台是否已有任务 {task_name}，已停止恢复以防重复外呼"
+                    status.record_batch_result(batch_name, False, status.message)
+                    return
+                if existing_task:
+                    status.skipped_batches.append(batch_name)
+                    state = existing_task.get("state")
+                    if state == 2:
+                        actual_cnt = int(existing_task.get("actualCnt") or 0)
+                        connect_rate = int(round(actual_cnt / lead_count * 100)) if lead_count else 0
+                        status.task_state = "已完成"
+                        status.completed_batches += 1
+                        status.message = f"平台已有任务，跳过上传；接通 {actual_cnt}/{lead_count} 条（接通率 {connect_rate}%）"
+                        status.record_batch_result(
+                            batch_name, True, status.message,
+                            actual_count=actual_cnt, lead_count=lead_count,
+                        )
+                        continue
+                    if state == 1:
+                        status.state = "监控已有任务"
+                        status.task_id = str(existing_task.get("id") or "")
+                        status.task_state = "进行中"
+                        status.message = f"平台任务 {task_name} 正在执行，等待完成"
+                        success, task_info = await wait_for_task_completion(
+                            session,
+                            base_url,
+                            tenant,
+                            token,
+                            env_config,
+                            task_name,
+                            poll_interval=config.settings.poll_interval_seconds,
+                            terminate_event=status.terminate_event,
+                        )
+                        if status.is_terminated():
+                            return
+                        if success and task_info:
+                            actual_cnt = int(task_info.get("actualCnt") or 0)
+                            connect_rate = int(round(actual_cnt / lead_count * 100)) if lead_count else 0
+                            status.task_state = "已完成"
+                            status.completed_batches += 1
+                            status.message = f"平台已有任务已完成；接通 {actual_cnt}/{lead_count} 条（接通率 {connect_rate}%）"
+                            status.record_batch_result(
+                                batch_name, True, status.message,
+                                actual_count=actual_cnt, lead_count=lead_count,
+                            )
+                        else:
+                            status.task_state = "超时/未知"
+                            status.message = f"平台已有任务 {task_name} 状态未知，未重复上传"
+                            status.record_batch_result(batch_name, False, status.message)
+                        continue
+
+                    status.task_state = f"未知状态 {state}"
+                    status.message = f"平台已有任务 {task_name} 状态未知，未重复上传"
+                    status.record_batch_result(batch_name, False, status.message)
+                    continue
 
             if batch_initiate_time is not None and prev_lead_count > 0:
                 # 同租户下一批不能立刻发起，要等上一批发起时间 + 上一批线索数 * 40 秒。
@@ -220,10 +290,6 @@ async def process_tenant(
             if status.is_terminated():
                 return
 
-            task_name = tenant.task_name_template.format(
-                tenant=tenant.name, batch=batch_name,
-                date=datetime.now().strftime("%m%d"),
-            )
             status.state = "发起外呼"
             result = await initiate_outcall(
                 session, base_url, tenant, token, env_config, fid, task_name

@@ -448,8 +448,10 @@ python tools/process_clue_report.py \
 
 在 `tools/recorder.py` 的 `ACCOUNTS` 列表或 `run_jianyin_stores.py` 的 `NEW_ACCOUNTS` 列表中追加账号配置：
 ```python
-{"name": "门店名", "username": "账号", "password": "密码"}
+{"name": "门店名", "username": "账号", "password": "密码", "mtd_start_date": "250613"}
 ```
+
+`mtd_start_date` 为可选的 MTD 统计下界，格式为 `YYMMDD`。配置后，MTD 仅统计线索下发时间和话单结束时间不早于该日期的数据；例如 `250613` 表示 2025-06-13。也可以在 AICC 运营工作台的配置中心填写该字段。
 
 如需分组统计，同时配置 `group_by_call_field`、`required_group_values`、`group_display_names` 等参数。
 

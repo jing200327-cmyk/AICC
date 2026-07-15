@@ -8,82 +8,46 @@ from pathlib import Path
 
 import pandas as pd
 
-ACCOUNTS = [
-    {"name": "长沙", "username": "lxhchangsha1234", "password": "changsha123456"},
-    {"name": "翔鹏", "username": "lxhxiangpeng1234", "password": "xp1123456"},
-    {"name": "骏宜", "username": "lxhjunyi1234", "password": "jy123456"},
-    {
-        "name": "韶关",
-        "username": "lxhshaoguan123",
-        "password": "shaoguan1234",
-        "group_by_call_field": "机器人",
-        "required_group_values": ["龙星行-新车首呼-广东韶关"],
-        "group_display_names": {
-            "龙星行-新车首呼-广东韶关": "韶关",
-        },
-        "group_summary_names": {
-            "龙星行-新车首呼-广东韶关": "韶关",
-        },
-    },
-    {
-        "name": "广西龙星行",
-        "username": "gxlxhnn123456",
-        "password": "guangxinanning1234",
-        "group_by_call_field": "机器人",
-        "required_group_values": [
-            "龙星行-新车首呼-广西南宁",
-            "龙星行-新车首呼-广西玉林",
-        ],
-        "group_display_names": {
-            "龙星行-新车首呼-广西南宁": "广西龙星行-南宁新车首呼",
-            "龙星行-新车首呼-广西玉林": "广西龙星行-玉林新车首呼",
-        },
-        "group_summary_names": {
-            "龙星行-新车首呼-广西南宁": "南宁新车首呼",
-            "龙星行-新车首呼-广西玉林": "玉林新车首呼",
-        },
-    },
-    {
-        "name": "海珠龙星行",
-        "username": "guangzhouhaizhu1234",
-        "password": "gzhz123456",
-        "group_by_call_field": "机器人",
-        "mtd_start_date": "260603",
-        "merge_summary_title": "广州新车",
-        "required_group_values": [
-            "龙星行-新车首呼-广东广州海珠",
-            "龙星行-新车首呼-广东广州番禺",
-        ],
-        "group_display_names": {
-            "龙星行-新车首呼-广东广州海珠": "广州龙星行-海珠新车首呼",
-            "龙星行-新车首呼-广东广州番禺": "广州龙星行-番禺新车首呼",
-        },
-    },
-    {
-        "name": "广州龙星行",
-        "username": "lxhguangzhou123",
-        "password": "guangzhoulxh1234",
-        "group_by_call_field": "机器人",
-        "mtd_start_date": "260518",
-        "merge_summary_title": "广州售后",
-        "required_group_values": [
-            "龙星行-广州龙星行-售后-活动招揽",
-            "龙星行-广州龙星行-售后-续保提醒",
-        ],
-        "group_display_names": {
-            "龙星行-广州龙星行-售后-活动招揽": "广州龙星行-售后-活动招揽",
-            "龙星行-广州龙星行-售后-续保提醒": "广州龙星行-售后-续保提醒",
-        },
-        "exclude_clue_ids": [
-            "2056196796951138305",
-            "2056196098764095489",
-            "2056195749621841921",
-            "2056188808517488641",
-            "2056188808467156993",
-            "2056188808391659521",
-        ],
-    },
-]
+ACCOUNTS = [{'name': '长沙', 'username': 'lxhchangsha1234', 'password': 'changsha123456'},
+ {'name': '翔鹏', 'username': 'lxhxiangpeng1234', 'password': 'xp1123456'},
+ {'name': '骏宜', 'username': 'lxhjunyi1234', 'password': 'jy123456'},
+ {'name': '韶关',
+  'username': 'lxhshaoguan123',
+  'password': 'shaoguan1234',
+  'group_by_call_field': '机器人',
+  'required_group_values': ['龙星行-新车首呼-广东韶关'],
+  'group_display_names': {'龙星行-新车首呼-广东韶关': '韶关'},
+  'group_summary_names': {'龙星行-新车首呼-广东韶关': '韶关'}},
+ {'name': '广西龙星行',
+  'username': 'gxlxhnn123456',
+  'password': 'guangxinanning1234',
+  'group_by_call_field': '机器人',
+  'required_group_values': ['龙星行-新车首呼-广西南宁', '龙星行-新车首呼-广西玉林'],
+  'group_display_names': {'龙星行-新车首呼-广西南宁': '广西龙星行-南宁新车首呼', '龙星行-新车首呼-广西玉林': '广西龙星行-玉林新车首呼'},
+  'group_summary_names': {'龙星行-新车首呼-广西南宁': '南宁新车首呼', '龙星行-新车首呼-广西玉林': '玉林新车首呼'}},
+ {'name': '海珠龙星行',
+  'username': 'guangzhouhaizhu1234',
+  'password': 'gzhz123456',
+  'group_by_call_field': '机器人',
+  'mtd_start_date': '260603',
+  'merge_summary_title': '广州新车',
+  'required_group_values': ['龙星行-新车首呼-广东广州海珠', '龙星行-新车首呼-广东广州番禺'],
+  'group_display_names': {'龙星行-新车首呼-广东广州海珠': '广州龙星行-海珠新车首呼', '龙星行-新车首呼-广东广州番禺': '广州龙星行-番禺新车首呼'}},
+ {'name': '广州龙星行',
+  'username': 'lxhguangzhou123',
+  'password': 'guangzhoulxh1234',
+  'group_by_call_field': '机器人',
+  'mtd_start_date': '260518',
+  'merge_summary_title': '广州售后',
+  'required_group_values': ['龙星行-广州龙星行-售后-活动招揽', '龙星行-广州龙星行-售后-续保提醒'],
+  'group_display_names': {'龙星行-广州龙星行-售后-活动招揽': '广州龙星行-售后-活动招揽', '龙星行-广州龙星行-售后-续保提醒': '广州龙星行-售后-续保提醒'},
+  'exclude_clue_ids': ['2056196796951138305',
+                       '2056196098764095489',
+                       '2056195749621841921',
+                       '2056188808517488641',
+                       '2056188808467156993',
+                       '2056188808391659521']},
+ {'name': '长沙售后', 'username': 'changshashouhou1234', 'password': 'shouhou123456'}]
 
 BASE_URL = "https://service.aidcc.cn"
 LOGIN_PATH = "/bc/v1/users/login"

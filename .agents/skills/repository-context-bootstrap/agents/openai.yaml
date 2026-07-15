@@ -1,0 +1,4 @@
+interface:
+  display_name: "Repository Context Bootstrap"
+  short_description: "Initialize evidence-based repository rules."
+  default_prompt: "Use $repository-context-bootstrap to create or improve this repository's AGENTS.md from verified evidence."

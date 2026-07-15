@@ -25,6 +25,11 @@ class OutcallJob:
     mode: str
     split_job_id: str
     files: list[OutcallFile]
+    resume_existing: bool = False
+    stop_requested: bool = False
+    current_batch: str = ''
+    queued_batches: list[str] = field(default_factory=list)
+    stopped_batches: list[str] = field(default_factory=list)
     state: str = '等待启动'
     message: str = ''
     progress: str = '0/0'

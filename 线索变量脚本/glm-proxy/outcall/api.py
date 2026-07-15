@@ -9,6 +9,9 @@ from .service import (
     InvalidOutcallModeError,
     OutcallError,
     OutcallFileNotFoundError,
+    OutcallJobAlreadyRunningError,
+    OutcallPlatformStatusError,
+    OutcallQueuePausedError,
     OutcallService,
     OutcallTenantNotFoundError,
     SplitJobNotFoundError,
@@ -48,6 +51,8 @@ def create_router(service: OutcallService) -> APIRouter:
             return error_response(exc.code, exc.message, exc.detail, 404)
         except DuplicateOutcallFileError as exc:
             return error_response(exc.code, exc.detail or exc.message, exc.detail, 409)
+        except (OutcallQueuePausedError, OutcallJobAlreadyRunningError) as exc:
+            return error_response(exc.code, exc.message, exc.detail, 409)
         except (SplitJobNotReadyError, OutcallTenantNotFoundError, OutcallFileNotFoundError) as exc:
             return error_response(exc.code, exc.message, exc.detail, 422)
         except OutcallError as exc:
@@ -66,5 +71,45 @@ def create_router(service: OutcallService) -> APIRouter:
         if not job:
             return error_response('OUTCALL_JOB_NOT_FOUND', 'Outcall job does not exist', job_id, 404)
         return job_to_dict(job)
+
+    @router.get('/stores/{store_code}/queue-state')
+    async def get_queue_state(store_code: str, environment: str = 'prod'):
+        try:
+            return await service.get_queue_state(store_code, environment)
+        except InvalidOutcallEnvironmentError as exc:
+            return error_response(exc.code, exc.message, exc.detail, 422)
+        except (OutcallTenantNotFoundError, OutcallFileNotFoundError) as exc:
+            return error_response(exc.code, exc.message, exc.detail, 422)
+        except OutcallPlatformStatusError as exc:
+            return error_response(exc.code, exc.message, exc.detail, 502)
+        except OutcallError as exc:
+            return error_response(exc.code, exc.message, exc.detail, 400)
+
+    @router.post('/stores/{store_code}/stop-pending')
+    async def stop_pending_batches(store_code: str, payload: dict):
+        environment = str(payload.get('environment') or 'prod')
+        try:
+            return await service.stop_pending_batches(store_code, environment)
+        except InvalidOutcallEnvironmentError as exc:
+            return error_response(exc.code, exc.message, exc.detail, 422)
+        except OutcallPlatformStatusError as exc:
+            return error_response(exc.code, exc.message, exc.detail, 502)
+        except OutcallError as exc:
+            return error_response(exc.code, exc.message, exc.detail, 400)
+
+    @router.post('/stores/{store_code}/resume-pending')
+    async def resume_pending_batches(store_code: str, payload: dict):
+        environment = str(payload.get('environment') or 'prod')
+        try:
+            job = service.resume_pending_batches(store_code, environment)
+            return JSONResponse(job_to_dict(job), status_code=202)
+        except InvalidOutcallEnvironmentError as exc:
+            return error_response(exc.code, exc.message, exc.detail, 422)
+        except OutcallJobAlreadyRunningError as exc:
+            return error_response(exc.code, exc.message, exc.detail, 409)
+        except (OutcallTenantNotFoundError, OutcallFileNotFoundError, SplitJobNotFoundError) as exc:
+            return error_response(exc.code, exc.message, exc.detail, 422)
+        except OutcallError as exc:
+            return error_response(exc.code, exc.message, exc.detail, 400)
 
     return router

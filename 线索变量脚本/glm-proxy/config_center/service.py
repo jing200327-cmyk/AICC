@@ -5,6 +5,7 @@ import hashlib
 import json
 import pprint
 import re
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -32,6 +33,16 @@ class ConfigConflictError(ConfigCenterError):
     code = 'CONFIG_CONFLICT'
     message = 'Configuration already exists'
     status_code = 409
+
+
+class DailyAccountReconfigureRequired(ConfigConflictError):
+    code = 'DAILY_ACCOUNT_RECONFIGURE_REQUIRED'
+    message = 'Daily report account reconfiguration requires confirmation'
+
+    def __init__(self, name: str, identical: bool):
+        self.name = name
+        self.identical = identical
+        super().__init__(f'{name} 已在 ACCOUNTS 中存在，请确认是否重新配置')
 
 
 class ConfigCenterService:
@@ -156,12 +167,18 @@ class ConfigCenterService:
 
     def save_daily_account(self, payload: dict[str, Any]) -> dict[str, Any]:
         name = self._require_text(payload.get('name'), 'name')
+        mtd_start_date = self._optional_report_date(
+            payload.get('mtd_start_date'),
+            'mtd_start_date',
+        )
         account = {
             'name': name,
             'username': self._require_text(payload.get('username'), 'username'),
             'password': self._require_text(payload.get('password'), 'password'),
         }
-        has_multiple = bool(payload.get('has_multiple_robots'))
+        if mtd_start_date:
+            account['mtd_start_date'] = mtd_start_date
+        has_multiple = self._as_bool(payload.get('has_multiple_robots'))
         if has_multiple:
             required_values = self._split_values(payload.get('required_group_values'))
             if not required_values:
@@ -175,11 +192,51 @@ class ConfigCenterService:
                 'group_summary_names': summary_names,
             })
         accounts = self._load_daily_accounts()
-        if any(item.get('name') == name for item in accounts):
-            raise ConfigConflictError(f'{name} 已在 ACCOUNTS 中存在')
-        accounts.append(account)
+        existing_index = next(
+            (index for index, item in enumerate(accounts) if self._text(item.get('name')) == name),
+            None,
+        )
+        reconfigured = existing_index is not None
+        if existing_index is not None:
+            existing = accounts[existing_index]
+            managed_keys = {
+                'name',
+                'username',
+                'password',
+                'group_by_call_field',
+                'required_group_values',
+                'group_display_names',
+                'group_summary_names',
+                'mtd_start_date',
+            }
+            existing_managed = {
+                key: value
+                for key, value in existing.items()
+                if key in managed_keys
+            }
+            if not self._as_bool(payload.get('force_reconfigure')):
+                raise DailyAccountReconfigureRequired(name, identical=existing_managed == account)
+            preserved = {
+                key: value
+                for key, value in existing.items()
+                if key not in managed_keys
+            }
+            accounts[existing_index] = {**account, **preserved}
+        else:
+            accounts.append(account)
         self._write_daily_accounts(accounts)
-        return {'message': '龙星行日报账号配置已写入 ACCOUNTS', 'account': account}
+        account_summary = {
+            'name': name,
+            'has_multiple_robots': has_multiple,
+            'robot_count': len(account.get('required_group_values') or []) if has_multiple else 1,
+        }
+        if mtd_start_date:
+            account_summary['mtd_start_date'] = mtd_start_date
+        return {
+            'message': '龙星行日报账号配置已重新写入 ACCOUNTS' if reconfigured else '龙星行日报账号配置已写入 ACCOUNTS',
+            'reconfigured': reconfigured,
+            'account': account_summary,
+        }
 
     def _apply_persisted_config(self) -> None:
         data = self._load_store()
@@ -267,7 +324,14 @@ class ConfigCenterService:
         lines = text.splitlines()
         rendered = 'ACCOUNTS = ' + pprint.pformat(accounts, width=120, sort_dicts=False)
         lines[account_node.lineno - 1:account_node.end_lineno] = rendered.splitlines()
-        path.write_text('\n'.join(lines) + '\n', encoding='utf-8')
+        updated_text = '\n'.join(lines) + '\n'
+        try:
+            ast.parse(updated_text)
+        except SyntaxError as exc:
+            raise ConfigValidationError(f'生成的 ACCOUNTS 配置语法无效：{exc}') from exc
+        temporary_path = path.with_suffix('.py.tmp')
+        temporary_path.write_text(updated_text, encoding='utf-8')
+        temporary_path.replace(path)
 
     def _load_store(self) -> dict[str, Any]:
         if not self.store_path.exists():
@@ -296,8 +360,25 @@ class ConfigCenterService:
             raise ConfigValidationError(f'{field} 不能为空')
         return text
 
+    def _optional_report_date(self, value: Any, field: str) -> str:
+        text = self._text(value)
+        if not text:
+            return ''
+        if not re.fullmatch(r'[0-9]{6}', text):
+            raise ConfigValidationError(f'{field} 必须使用 YYMMDD 格式')
+        try:
+            datetime.strptime(text, '%y%m%d')
+        except ValueError as exc:
+            raise ConfigValidationError(f'{field} 不是有效日期') from exc
+        return text
+
     def _text(self, value: Any) -> str:
         return str(value or '').strip()
+
+    def _as_bool(self, value: Any) -> bool:
+        if isinstance(value, bool):
+            return value
+        return self._text(value).lower() in {'1', 'true', 'yes', 'y'}
 
     def _split_values(self, value: Any) -> list[str]:
         if isinstance(value, list):

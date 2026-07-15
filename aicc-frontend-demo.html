@@ -996,6 +996,64 @@
       gap: 14px;
     }
 
+    .segmented-control {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      width: 100%;
+      padding: 3px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #f4f6f8;
+    }
+
+    .segment-button {
+      min-height: 34px;
+      border: 0;
+      border-radius: 4px;
+      background: transparent;
+      color: #667085;
+      cursor: pointer;
+      font: inherit;
+    }
+
+    .segment-button.active {
+      background: #fff;
+      color: #175cd3;
+      box-shadow: 0 1px 3px rgba(16, 24, 40, 0.12);
+      font-weight: 600;
+    }
+
+    .segment-button:focus-visible {
+      outline: 2px solid #84adff;
+      outline-offset: 1px;
+    }
+
+    .date-range-fields {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+      align-items: center;
+      gap: 10px;
+    }
+
+    .date-range-fields input {
+      width: 100%;
+      min-width: 0;
+      min-height: 38px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 8px 10px;
+      color: var(--text);
+      background: #fff;
+    }
+
+    .date-range-separator {
+      color: var(--muted);
+    }
+
+    [hidden] {
+      display: none !important;
+    }
+
     .modal-foot {
       border-top: 1px solid var(--line);
       border-bottom: 0;
@@ -1090,6 +1148,25 @@
       font-size: 15px;
       color: #0f172a;
     }
+    .outcall-recovery {
+      display: grid;
+      gap: 10px;
+      margin-top: 14px;
+      padding-top: 14px;
+      border-top: 1px solid var(--line);
+    }
+    .outcall-action-note {
+      margin: 0;
+      color: #475467;
+      font-size: 12px;
+      line-height: 1.65;
+    }
+    .outcall-action-note strong {
+      color: #1d2939;
+    }
+    .outcall-recovery .btn {
+      width: 100%;
+    }
     .mobile-menu {
       display: none;
     }
@@ -1180,6 +1257,14 @@
 
       .stats, .split-summary, .form-grid {
         grid-template-columns: 1fr;
+      }
+
+      .date-range-fields {
+        grid-template-columns: 1fr;
+      }
+
+      .date-range-separator {
+        display: none;
       }
     }
   </style>
@@ -1408,6 +1493,12 @@
                   <div class="toolbar" style="margin-top:14px;">
                     <button class="btn warning" id="pushTest" type="button">推出测试线索</button>
                     <button class="btn success" id="pushFormal" type="button">推出正式线索</button>
+                  </div>
+                  <div class="outcall-recovery">
+                    <p class="outcall-action-note"><strong>停止后续调度：</strong>如需立即停止当前后续外呼批次，请立即点击下方按钮。如要立即停止当前正在外呼批次，请立即联系研发老师停止任务。</p>
+                    <button class="btn danger" id="stopPendingOutcall" type="button">停止当前未外呼批次</button>
+                    <p class="outcall-action-note"><strong>恢复后续批次：</strong>如遇后端重启或点击了“停止当前未外呼批次”按钮后想要重启后续未外呼批次，点击下方按钮。</p>
+                    <button class="btn primary" id="resumePendingOutcall" type="button">继续未推出批次</button>
                   </div>
                 </div>
               </div>
@@ -1659,6 +1750,11 @@
                       <div class="field"><label for="dailyConfigName">name</label><input class="input" id="dailyConfigName" name="name"></div>
                       <div class="field"><label for="dailyConfigUsername">username</label><input class="input" id="dailyConfigUsername" name="username"></div>
                       <div class="field"><label for="dailyConfigPassword">password</label><input class="input" id="dailyConfigPassword" name="password" type="password"></div>
+                      <div class="field">
+                        <label for="dailyMtdStartDate">mtd_start_date（可选）</label>
+                        <input class="input" id="dailyMtdStartDate" name="mtd_start_date" type="text" inputmode="numeric" maxlength="6" pattern="[0-9]{6}" placeholder="YYMMDD，如 250613">
+                        <span class="hint">MTD 仅统计线索下发时间不早于该日期的数据；跨月区间会连续累计。</span>
+                      </div>
                       <div class="field"><label for="dailyHasMultipleRobots">该门店是否有多个机器人</label><select class="select" id="dailyHasMultipleRobots" name="has_multiple_robots"><option value="false">否</option><option value="true">是</option></select></div>
                     </div>
                     <div class="robot-extra" id="dailyRobotExtra" style="display:none;">
@@ -1739,12 +1835,27 @@
           <select class="select" id="monthlySummaryStoreSelect" multiple size="8"></select>
         </div>
         <div class="field">
+          <label>时间标准</label>
+          <div class="segmented-control" role="group" aria-label="横向汇总时间标准">
+            <button class="segment-button active" type="button" data-monthly-period-mode="month" aria-pressed="true">按月份</button>
+            <button class="segment-button" type="button" data-monthly-period-mode="custom" aria-pressed="false">自定义日期</button>
+          </div>
+        </div>
+        <div class="field" id="monthlySummaryMonthField">
           <label for="monthlySummaryMonthSelect">统计月份</label>
           <select class="select" id="monthlySummaryMonthSelect">
             <option value="">正在读取月份...</option>
           </select>
-          <span class="hint">历史月份将检查整月每日汇总；缺失日期会自动补拉线索明细和话单后再生成。</span>
         </div>
+        <div class="field" id="monthlySummaryCustomPeriodField" hidden>
+          <label for="monthlySummaryPeriodStart">自定义日期范围</label>
+          <div class="date-range-fields">
+            <input id="monthlySummaryPeriodStart" type="date" aria-label="开始日期">
+            <span class="date-range-separator">至</span>
+            <input id="monthlySummaryPeriodEnd" type="date" aria-label="结束日期">
+          </div>
+        </div>
+        <span class="hint">系统将检查所选时间范围内的每日汇总；缺失日期会自动补拉线索明细和话单后再生成。</span>
       </div>
       <div class="modal-foot">
         <button class="btn" id="monthlySummaryModalCancel" type="button">取消</button>
@@ -1965,14 +2076,6 @@
       if (shouldLoadFiles) loadSplitFiles(store);
     }
 
-    const callStatusSamples = {
-      '银马': ['银马-测试 已外呼5条，接通3条，接通率60%', '银马-2 已外呼45条，接通31条，接通率68.9%', '银马-3 已外呼45条，接通29条，接通率64.4%', '银马-4 已外呼45条，接通30条，接通率66.7%', '银马-5 已外呼31条，接通19条，接通率61.3%'],
-      '合肥马自达': ['合肥马自达-测试 已外呼5条，接通4条，接通率80%', '合肥马自达-2 已外呼45条，接通33条，接通率73.3%', '合肥马自达-3 已外呼45条，接通32条，接通率71.1%', '合肥马自达-4 已外呼45条，接通28条，接通率62.2%', '合肥马自达-5 已外呼31条，接通20条，接通率64.5%'],
-      '美诚林肯': ['美诚林肯-测试 已外呼5条，接通3条，接通率60%', '美诚林肯-2 已外呼45条，接通27条，接通率60%', '美诚林肯-3 已外呼45条，接通30条，接通率66.7%', '美诚林肯-4 已外呼45条，接通26条，接通率57.8%', '美诚林肯-5 已外呼31条，接通18条，接通率58.1%'],
-      '天翔林肯': ['天翔林肯-测试 已外呼5条，接通4条，接通率80%', '天翔林肯-2 已外呼45条，接通34条，接通率75.6%', '天翔林肯-3 已外呼45条，接通31条，接通率68.9%', '天翔林肯-4 已外呼45条，接通29条，接通率64.4%', '天翔林肯-5 已外呼31条，接通22条，接通率71%'],
-      '武汉骏马': ['武汉骏马-测试 已外呼5条，接通3条，接通率60%', '武汉骏马-2 已外呼45条，接通30条，接通率66.7%', '武汉骏马-3 已外呼45条，接通28条，接通率62.2%', '武汉骏马-4 已外呼45条，接通29条，接通率64.4%', '武汉骏马-5 已外呼31条，接通17条，接通率54.8%'],
-    };
-
     function getCurrentOutcallJobId() {
       return outcallJobs[currentSplitStore]?.latest || '';
     }
@@ -2003,25 +2106,41 @@
       return lines.join('\n');
     }
 
+    function renderOutcallQueueState(state) {
+      const completed = (state.completed_batches || []).map(item => {
+        const rate = item.expected_count ? Math.round(item.actual_count / item.expected_count * 1000) / 10 : 0;
+        return `${item.task_name} 已完成，线索${item.expected_count}条，接通${item.actual_count}条，接通率${rate}%`;
+      });
+      const running = (state.running_batches || []).map(item => {
+        const rate = item.expected_count ? Math.round(item.actual_count / item.expected_count * 1000) / 10 : 0;
+        return `${item.task_name} 平台正在外呼，线索${item.expected_count}条，当前接通${item.actual_count}条，接通率${rate}%`;
+      });
+      const pending = (state.pending_batches || []).map(item => `${item.task_name} 未推出，${item.filename}，线索${item.row_count}条`);
+      const lines = [
+        `门店：${state.store_name}`,
+        `环境：${state.environment === 'prod' ? '生产环境' : '测试环境'}`,
+        `后续队列：${state.is_paused ? '已暂停' : '可继续调度'}`,
+      ];
+      if (completed.length) lines.push(`已完成批次：\n${completed.join('\n')}`);
+      if (running.length) lines.push(`当前平台任务：\n${running.join('\n')}`);
+      if (pending.length) lines.push(`未推出批次：\n${pending.join('\n')}`);
+      if (!completed.length && !running.length && !pending.length) lines.push('今天暂无对应外呼任务或分割文件。');
+      return lines.join('\n\n');
+    }
+
     async function refreshCurrentCallStatus() {
-      const jobId = getCurrentOutcallJobId();
-      if (!jobId) {
-        const lines = callStatusSamples[currentSplitStore] || [`${currentSplitStore}-测试 已外呼5条，接通3条，接通率60%`];
-        document.getElementById('callStatusState').className = 'status ok';
-        document.getElementById('callStatusState').textContent = '已更新';
-        document.getElementById('callStatusReader').textContent = lines.join('\n');
-        saveCurrentSplitState();
-        return;
-      }
+      const storeCode = splitStoreCodeMap[currentSplitStore];
+      const environment = document.getElementById('outcallEnvironment').value;
       document.getElementById('callStatusState').className = 'status info';
       document.getElementById('callStatusState').textContent = '读取中';
       try {
-        const response = await fetch(`${outcallApiBaseUrl}/jobs/${jobId}`);
+        const response = await fetch(`${outcallApiBaseUrl}/stores/${encodeURIComponent(storeCode)}/queue-state?environment=${encodeURIComponent(environment)}`);
         const body = await parseApiResponse(response);
         if (!response.ok) throw body.error || body;
-        document.getElementById('callStatusState').className = body.status === 'failed' ? 'status danger' : (body.status === 'completed' ? 'status ok' : 'status info');
-        document.getElementById('callStatusState').textContent = body.status === 'running' ? '外呼中' : body.status;
-        document.getElementById('callStatusReader').textContent = renderOutcallJobStatus(body);
+        const hasRunning = (body.running_batches || []).length > 0;
+        document.getElementById('callStatusState').className = body.is_paused ? 'status warn' : (hasRunning ? 'status info' : 'status ok');
+        document.getElementById('callStatusState').textContent = body.is_paused ? '队列已暂停' : (hasRunning ? '外呼中' : '已更新');
+        document.getElementById('callStatusReader').textContent = renderOutcallQueueState(body);
       } catch (error) {
         document.getElementById('callStatusState').className = 'status danger';
         document.getElementById('callStatusState').textContent = '读取失败';
@@ -2572,9 +2691,84 @@
       }
       saveCurrentSplitState();
     }
+
+    async function stopPendingOutcallBatches() {
+      const store = currentSplitStore;
+      const storeCode = splitStoreCodeMap[store];
+      const environment = document.getElementById('outcallEnvironment').value;
+      const environmentText = environment === 'prod' ? '生产环境' : '测试环境';
+      const confirmed = confirm(
+        `确认停止【${store} / ${environmentText}】后续未外呼批次？\n\n` +
+        '该操作只停止后端继续推出后续批次，不会停止平台当前正在外呼的任务。'
+      );
+      if (!confirmed) return;
+      const button = document.getElementById('stopPendingOutcall');
+      button.disabled = true;
+      document.getElementById('callStatusState').className = 'status warn';
+      document.getElementById('callStatusState').textContent = '停止中';
+      document.getElementById('callStatusReader').textContent = `正在停止${store}后续未外呼批次调度，并读取平台当前状态。`;
+      try {
+        const response = await fetch(
+          `${outcallApiBaseUrl}/stores/${encodeURIComponent(storeCode)}/stop-pending`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ environment }),
+          }
+        );
+        const body = await parseApiResponse(response);
+        if (!response.ok) throw body.error || body;
+        document.getElementById('formalState').className = 'status warn';
+        document.getElementById('formalState').textContent = '后续批次已停止';
+        document.getElementById('callStatusState').className = 'status warn';
+        document.getElementById('callStatusState').textContent = '队列已暂停';
+        document.getElementById('callStatusReader').textContent = `${body.message}\n\n${renderOutcallQueueState(body)}`;
+      } catch (error) {
+        document.getElementById('callStatusState').className = 'status danger';
+        document.getElementById('callStatusState').textContent = '停止失败';
+        document.getElementById('callStatusReader').textContent = formatSplitError(error);
+      } finally {
+        button.disabled = false;
+        saveCurrentSplitState();
+      }
+    }
+
+    async function resumePendingOutcallBatches() {
+      const store = currentSplitStore;
+      const storeCode = splitStoreCodeMap[store];
+      const environment = document.getElementById('outcallEnvironment').value;
+      const environmentText = environment === 'prod' ? '生产环境' : '测试环境';
+      if (!confirm(`确认继续【${store} / ${environmentText}】尚未推出的正式批次？\n\n平台已完成批次会跳过，运行中批次会等待完成，不会重新上传。`)) return;
+      const button = document.getElementById('resumePendingOutcall');
+      button.disabled = true;
+      document.getElementById('callStatusState').className = 'status info';
+      document.getElementById('callStatusState').textContent = '恢复中';
+      document.getElementById('callStatusReader').textContent = `正在恢复${store}未推出正式批次。`;
+      try {
+        const response = await fetch(
+          `${outcallApiBaseUrl}/stores/${encodeURIComponent(storeCode)}/resume-pending`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ environment }),
+          }
+        );
+        const body = await parseApiResponse(response);
+        if (!response.ok) throw body.error || body;
+        handleOutcallJobStarted('formal', body);
+      } catch (error) {
+        renderOutcallLaunchFailure(error);
+      } finally {
+        button.disabled = false;
+        saveCurrentSplitState();
+      }
+    }
+
     document.getElementById('pushTest').addEventListener('click', () => startOutcall('test'));
 
     document.getElementById('pushFormal').addEventListener('click', () => startOutcall('formal'));
+    document.getElementById('stopPendingOutcall').addEventListener('click', stopPendingOutcallBatches);
+    document.getElementById('resumePendingOutcall').addEventListener('click', resumePendingOutcallBatches);
     document.getElementById('refreshCallStatus').addEventListener('click', refreshCurrentCallStatus);
 
     function todayDateInputValue() {
@@ -2690,15 +2884,18 @@
       const body = summary.html
         ? `<div class="summary-table-wrap monthly-summary-wrap" id="${targetId}">${summary.html}</div>`
         : `<div class="report-empty" id="${targetId}">未生成该门店月度横向汇总表。</div>`;
-      const supplementedText = (group.supplemented_dates || []).length
-        ? `已补齐 ${group.supplemented_dates.length} 天`
-        : '无需补数';
+      const recalculatedCount = (group.recalculated_dates || []).length;
+      const processingText = recalculatedCount
+        ? `区间 MTD 已重算 ${recalculatedCount} 天`
+        : ((group.supplemented_dates || []).length
+          ? `已补齐 ${group.supplemented_dates.length} 天`
+          : '无需补数');
       return `
         <section class="monthly-summary-group" data-monthly-summary-group="${escapeHtml(group.key || '')}">
           <div class="report-group-head">
             <h3>${escapeHtml(title)}</h3>
             <div class="toolbar">
-              <span class="hint">${escapeHtml(group.month_label || '')} · ${escapeHtml(supplementedText)} · ${escapeHtml(group.period || '')}</span>
+              <span class="hint">${escapeHtml(group.period_label || group.month_label || '')} · ${escapeHtml(processingText)} · ${escapeHtml(group.period || '')}</span>
               <button class="btn copy-btn" type="button" data-copy-monthly-image-group="${escapeHtml(group.key || '')}" data-copy-monthly-period="${escapeHtml(group.period || '')}" data-copy-monthly-output-folder="${escapeHtml(group.output_folder || '')}" data-copy-target="${targetId}">复制截图</button>
             </div>
           </div>
@@ -2761,9 +2958,65 @@
       }
     }
 
+    function setMonthlySummaryPeriodMode(mode) {
+      const selectedMode = mode === 'custom' ? 'custom' : 'month';
+      document.querySelectorAll('[data-monthly-period-mode]').forEach(button => {
+        const active = button.dataset.monthlyPeriodMode === selectedMode;
+        button.classList.toggle('active', active);
+        button.setAttribute('aria-pressed', String(active));
+      });
+      document.getElementById('monthlySummaryMonthField').hidden = selectedMode !== 'month';
+      document.getElementById('monthlySummaryCustomPeriodField').hidden = selectedMode !== 'custom';
+    }
+
+    function initializeMonthlySummaryDateRange() {
+      const endInput = document.getElementById('monthlySummaryPeriodEnd');
+      const startInput = document.getElementById('monthlySummaryPeriodStart');
+      const today = todayDateInputValue();
+      startInput.max = today;
+      endInput.max = today;
+      if (!endInput.value) endInput.value = today;
+      if (!startInput.value) startInput.value = `${today.slice(0, 8)}01`;
+    }
+
+    function selectedMonthlySummaryPeriod() {
+      const mode = document.querySelector('[data-monthly-period-mode].active')?.dataset.monthlyPeriodMode || 'month';
+      if (mode === 'month') {
+        const select = document.getElementById('monthlySummaryMonthSelect');
+        const targetMonth = select.value;
+        return {
+          mode,
+          label: select.selectedOptions[0]?.textContent || targetMonth,
+          payload: { target_month: targetMonth },
+          valid: Boolean(targetMonth),
+          error: '请选择统计月份',
+        };
+      }
+
+      const startValue = document.getElementById('monthlySummaryPeriodStart').value;
+      const endValue = document.getElementById('monthlySummaryPeriodEnd').value;
+      if (!startValue || !endValue) {
+        return { mode, payload: {}, valid: false, error: '请选择完整的开始日期和结束日期' };
+      }
+      if (startValue > endValue) {
+        return { mode, payload: {}, valid: false, error: '开始日期不能晚于结束日期' };
+      }
+      return {
+        mode,
+        label: `${startValue} 至 ${endValue}`,
+        payload: {
+          period_start: dateInputToReportDate(startValue),
+          period_end: dateInputToReportDate(endValue),
+        },
+        valid: true,
+        error: '',
+      };
+    }
+
     function openMonthlySummaryModal() {
       document.getElementById('monthlySummaryModal').classList.add('open');
       document.getElementById('monthlySummaryModal').setAttribute('aria-hidden', 'false');
+      initializeMonthlySummaryDateRange();
       loadMonthlySummaryStores();
       loadMonthlySummaryMonths();
     }
@@ -2773,24 +3026,24 @@
       document.getElementById('monthlySummaryModal').setAttribute('aria-hidden', 'true');
     }
 
-    async function checkMonthlySummaryStatus(groups, targetMonth) {
+    async function checkMonthlySummaryStatus(groups, periodPayload) {
       const response = await fetch(`${dailyApiBaseUrl}/monthly-summary/status`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ groups, target_month: targetMonth }),
+        body: JSON.stringify({ groups, ...periodPayload }),
       });
       const body = await parseApiResponse(response);
       if (!response.ok) throw body.error || body;
       return body;
     }
 
-    async function submitMonthlySummary(groups, targetMonth, forceOverwrite) {
+    async function submitMonthlySummary(groups, periodPayload, forceOverwrite) {
       const response = await fetch(`${dailyApiBaseUrl}/monthly-summary`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           groups,
-          target_month: targetMonth,
+          ...periodPayload,
           force_overwrite: forceOverwrite,
         }),
       });
@@ -2801,34 +3054,37 @@
 
     async function generateMonthlySummary() {
       const storeSelect = document.getElementById('monthlySummaryStoreSelect');
-      const monthSelect = document.getElementById('monthlySummaryMonthSelect');
       const groups = Array.from(storeSelect.selectedOptions).map(option => option.value).filter(Boolean);
       const names = Array.from(storeSelect.selectedOptions).map(option => option.textContent).filter(Boolean).join('、');
-      const targetMonth = monthSelect.value;
-      const monthName = monthSelect.selectedOptions[0]?.textContent || targetMonth;
+      const periodSelection = selectedMonthlySummaryPeriod();
+      const periodName = periodSelection.label || '所选时间范围';
       if (!groups.length) {
         alert('请选择至少一个门店');
         return;
       }
-      if (!targetMonth) {
-        alert('请选择统计月份');
+      if (!periodSelection.valid) {
+        alert(periodSelection.error);
         return;
       }
 
       document.getElementById('dailyStatus').className = 'status info';
       document.getElementById('dailyStatus').textContent = '检查中';
-      document.getElementById('dailyLog').textContent = `正在检查 ${monthName} 横向汇总及缺失日期：${names}`;
+      document.getElementById('dailyLog').textContent = `正在检查 ${periodName} 横向汇总及缺失日期：${names}`;
       try {
-        const status = await checkMonthlySummaryStatus(groups, targetMonth);
+        const status = await checkMonthlySummaryStatus(groups, periodSelection.payload);
         const existingItems = (status.items || []).filter(item => item.store_dir_exists);
         const missingItems = (status.items || []).filter(item => (item.missing_dates || []).length);
         const prelaunchItems = (status.items || []).filter(item => (item.prelaunch_dates || []).length);
         let missingText = missingItems.length
           ? `\n\n检测到缺失日报：${missingItems.map(item => `${item.name} ${item.missing_dates.length} 天`).join('；')}。\n确认后将按日期逐日下载线索明细和话单并生成日报，耗时可能较长。`
-          : '\n\n该月份日报齐全，无需补拉原始数据。';
+          : '\n\n该时间范围内日报齐全，无需补拉原始数据。';
         if (prelaunchItems.length) {
           missingText += `
 上线前日期将自动跳过：${prelaunchItems.map(item => `${item.name} ${item.prelaunch_dates.length} 天`).join('；')}。`;
+        }
+        if (periodSelection.mode === 'custom') {
+          missingText += `
+自定义日期范围将从开始日期连续累计 MTD，并重新计算范围内全部日期。`;
         }
         let forceOverwrite = false;
         if (existingItems.length) {
@@ -2840,7 +3096,7 @@
             document.getElementById('dailyLog').textContent = '已取消重复生成。';
             return;
           }
-        } else if (!confirm(`确认生成【${names}】${monthName}横向汇总表？${missingText}`)) {
+        } else if (!confirm(`确认生成【${names}】${periodName}横向汇总表？${missingText}`)) {
           document.getElementById('dailyStatus').className = 'status gray';
           document.getElementById('dailyStatus').textContent = '已取消';
           document.getElementById('dailyLog').textContent = '已取消生成。';
@@ -2849,24 +3105,31 @@
 
         closeMonthlySummaryModal();
         document.getElementById('dailyStatus').className = 'status info';
-        document.getElementById('dailyStatus').textContent = missingItems.length ? '补数并汇总中' : '月度汇总中';
-        document.getElementById('dailyLog').textContent = missingItems.length
-          ? `正在逐日补拉缺失数据并生成 ${monthName} 横向汇总：${names}，请勿关闭后端服务。`
-          : `正在生成 ${monthName} 横向汇总表：${names}`;
-        const body = await submitMonthlySummary(groups, targetMonth, forceOverwrite);
+        document.getElementById('dailyStatus').textContent = periodSelection.mode === 'custom'
+          ? '区间重算中'
+          : (missingItems.length ? '补数并汇总中' : '月度汇总中');
+        document.getElementById('dailyLog').textContent = periodSelection.mode === 'custom'
+          ? `正在按 ${periodName} 连续累计 MTD 并重算全部日期：${names}，请勿关闭后端服务。`
+          : (missingItems.length
+          ? `正在逐日补拉缺失数据并生成 ${periodName} 横向汇总：${names}，请勿关闭后端服务。`
+          : `正在生成 ${periodName} 横向汇总表：${names}`);
+        const body = await submitMonthlySummary(groups, periodSelection.payload, forceOverwrite);
         renderMonthlySummary(body);
         const skipped = body.skipped || [];
         const skippedOnly = !(body.groups || []).length && skipped.length;
         document.getElementById('dailyStatus').className = 'status ok';
         document.getElementById('dailyStatus').textContent = skippedOnly ? '已跳过' : '月度汇总完成';
         const supplementedCount = (body.groups || []).reduce((total, item) => total + (item.supplemented_dates || []).length, 0);
-        const supplementedText = supplementedCount ? `，已补齐 ${supplementedCount} 个门店日期` : '';
+        const recalculatedCount = (body.groups || []).reduce((total, item) => total + (item.recalculated_dates || []).length, 0);
+        const supplementedText = recalculatedCount
+          ? `，已按区间起点重算 ${recalculatedCount} 个门店日期`
+          : (supplementedCount ? `，已补齐 ${supplementedCount} 个门店日期` : '');
         const errorText = (body.errors || []).length ? `\n部分门店未生成：${(body.errors || []).map(item => item.message).join('；')}` : '';
         const skippedText = skipped.length ? `
 已跳过：${skipped.map(item => item.reason).join('；')}` : '';
         document.getElementById('dailyLog').textContent = skippedOnly
           ? skipped.map(item => item.reason).join('；')
-          : `已生成 ${body.month_label || monthName} 横向汇总表${supplementedText}，保存目录：${body.output_dir}${errorText}${skippedText}`;
+          : `已生成 ${body.period_label || body.month_label || periodName} 横向汇总表${supplementedText}，保存目录：${body.output_dir}${errorText}${skippedText}`;
       } catch (error) {
         document.getElementById('dailyStatus').className = 'status danger';
         document.getElementById('dailyStatus').textContent = '月度汇总失败';
@@ -3334,6 +3597,9 @@
     document.getElementById('monthlySummaryModal').addEventListener('click', event => {
       if (event.target.id === 'monthlySummaryModal') closeMonthlySummaryModal();
     });
+    document.querySelectorAll('[data-monthly-period-mode]').forEach(button => {
+      button.addEventListener('click', () => setMonthlySummaryPeriodMode(button.dataset.monthlyPeriodMode));
+    });
     document.getElementById('monthlySummaryModalConfirm').addEventListener('click', generateMonthlySummary);
     document.getElementById('generateAllStoreSummary').addEventListener('click', openAllStoreSummaryModal);
     document.getElementById('allStoreSummaryModalClose').addEventListener('click', closeAllStoreSummaryModal);
@@ -3537,6 +3803,59 @@
       }
     }
 
+    async function submitDailyAccountConfig(form) {
+      if (!confirm('确认写入该配置？')) return null;
+      const statusId = 'configDailyStatus';
+      setConfigStatus(statusId, 'status info', '提交中');
+      const payload = formPayload(form);
+      payload.has_multiple_robots = payload.has_multiple_robots === 'true';
+
+      const send = async forceReconfigure => {
+        const requestPayload = {
+          ...payload,
+          force_reconfigure: forceReconfigure,
+        };
+        const response = await fetch(`${configApiBaseUrl}/daily-accounts`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(requestPayload),
+        });
+        const body = await parseApiResponse(response);
+        return { response, body };
+      };
+
+      try {
+        let result = await send(false);
+        if (
+          result.response.status === 409
+          && result.body.error?.code === 'DAILY_ACCOUNT_RECONFIGURE_REQUIRED'
+        ) {
+          setConfigStatus(statusId, 'status warn', '等待确认重配');
+          if (!confirm('账户配置已有该门店，是否重新配置？')) return null;
+          setConfigStatus(statusId, 'status info', '重新配置中');
+          result = await send(true);
+        }
+        if (!result.response.ok) throw result.body.error || result.body;
+
+        setConfigStatus(
+          statusId,
+          'status ok',
+          result.body.reconfigured ? '账号已重新配置' : '账号已写入',
+        );
+        form.reset();
+        document.getElementById('dailyGroupByCallField').value = '机器人';
+        updateDailyRobotFields();
+        dailyStoresLoaded = false;
+        monthlySummaryStoresLoaded = false;
+        await Promise.all([loadDailyStores(), loadMonthlySummaryStores()]);
+        return result.body;
+      } catch (error) {
+        setConfigStatus(statusId, 'status danger', '保存失败');
+        alert(formatLeadError(error));
+        return null;
+      }
+    }
+
     async function submitMultipartConfig(form, statusId, endpoint, successText) {
       if (!confirm('确认写入该配置？')) return null;
       setConfigStatus(statusId, 'status info', '提交中');
@@ -3563,7 +3882,14 @@
     }
 
     async function refreshConfigSummary() {
-      await Promise.all([loadLeadStores(), loadSplitStores(), loadDailyStores()]);
+      dailyStoresLoaded = false;
+      monthlySummaryStoresLoaded = false;
+      await Promise.all([
+        loadLeadStores(),
+        loadSplitStores(),
+        loadDailyStores(),
+        loadMonthlySummaryStores(),
+      ]);
     }
 
     document.getElementById('leadScriptConfigForm').addEventListener('submit', async event => {
@@ -3591,8 +3917,7 @@
 
     document.getElementById('dailyAccountConfigForm').addEventListener('submit', async event => {
       event.preventDefault();
-      const body = await submitJsonConfig(event.currentTarget, 'configDailyStatus', 'daily-accounts', '账号已写入');
-      if (body) await loadDailyStores();
+      await submitDailyAccountConfig(event.currentTarget);
     });
 
     document.getElementById('dailyHasMultipleRobots').addEventListener('change', updateDailyRobotFields);

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Task State Checkpoint"
+  short_description: "Capture verified task state before handoff."
+  default_prompt: "Use $task-state-checkpoint to save a verified handoff snapshot for the current task."
