@@ -11,18 +11,20 @@
 - glm-proxy/outcall/service.py：任务创建、重呼检查、停止后续批次、恢复队列和平台状态对账。
 - glm-proxy/outcall/repository.py：SQLite 中的任务与队列暂停状态。
 - glm-proxy/tests/test_outcall_recovery.py：停止、恢复、持久化和顺序处理回归测试。
+- glm-proxy/tests/test_split_output_modes.py：覆盖/追加冲突、连续编号和旧批次保留测试。
 
 # Split rules
 
 - 模板必须是当前门店前缀开头的 xlsx，并位于 split_root。
 - 保持默认规则：前 5 条生成 测试 文件，其余从编号 2 开始每 45 条一批。
-- 每次预览会清空目标日期/门店目录中的旧 xlsx，并清理旧版平铺输出。任何修改必须证明不会删除其他日期或门店文件。
+- 当日门店目录已有分割文件时，预览 API 必须先返回冲突，由用户明确选择覆盖或追加。覆盖模式清空该门店旧 xlsx 并重置为 测试、2、3...；追加模式保留旧文件，不重复生成 测试 文件，将本次全部线索按 45 条一批并从现有最大正式批次号加一继续命名。
+- 追加任务的 outputs 只包含本次新增批次，供外呼链路使用；all_outputs 包含当日门店目录全部批次，供页面统计和预览使用。不要把旧批次重新放入本次外呼队列。
 - 分割输出位于 线索预分割/YYMMDD/门店。该目录及其中 Excel 是运行产物，不手工编辑为测试结果。
 - 号码和变量转换应使用表格结构与明确字段，不用文本替换模拟 Excel 处理。
 
 # Outcall rules
 
-- 环境只接受 test 或 prod；具体平台地址和账号来自 config.yaml，不在代码或文档复制凭据。
+- 环境只接受 test 或 prod；租户账号、机器人和环境选择来自 config.yaml，平台基址集中定义在 src/config.py 的 `_BASE_URLS`。不得在其它代码、测试或文档复制地址映射和凭据。
 - 正式批次必须按编号顺序处理；前一平台任务完成后才处理下一批。
 - 恢复时对平台当天任务对账：完成批次跳过，运行批次只监控，平台不存在的批次才上传。
 - 停止当前未外呼批次只暂停后续调度，不声称停止平台中正在外呼的任务。
@@ -38,7 +40,7 @@
 从 glm-proxy 运行：
 
 ~~~
-python -m pytest tests/test_outcall_recovery.py -q
+venv\Scripts\python.exe -m pytest tests/test_outcall_recovery.py tests/test_split_output_modes.py -q
 ~~~
 
-预分割逻辑变更还需使用临时 xlsx 验证测试批次、正式批次顺序、总行数和二次生成覆盖范围。跨适配层变更后运行完整 tests。
+预分割逻辑变更还需使用临时 xlsx 验证测试批次、正式批次顺序、总行数、二次生成覆盖范围以及追加模式的连续编号和旧文件保留。跨适配层变更后运行完整 tests。

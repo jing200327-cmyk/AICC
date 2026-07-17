@@ -10,12 +10,13 @@
 - 外呼 config.yaml：tenants 和 test/prod 环境配置。
 - 日报 tools/recorder.py 中的 ACCOUNTS：日报账号与机器人配置。
 - tests/test_daily_account_configuration.py：日报账号新增、动态注册、重配确认和 API 回归。
+- tests/test_outcall_tenant_configuration.py：外呼生产必填校验、脱敏响应、预分割门店持久化、重启恢复及伪平台外呼链路。
 
 # Write contracts
 
 - 新增或更新线索脚本只接受 py；门店模板只接受 xlsx；路径和文件名必须经过安全化。
 - 线索脚本和预分割门店写入 config_store.json 后，必须同步更新运行中的 registry 或 stores。
-- 外呼租户写入 config.yaml 的 tenants，保持 task_name_template 和 test/prod 层级。不要把凭据返回给前端或写入日志。
+- 外呼租户写入 config.yaml 的 tenants，保持 task_name_template 和 test/prod 层级。prod 的 username、password、robot_id 必填，test 全部字段及两个环境的 dealer_id 可空。成功后必须同时把门店写入 config_store.json 的 split_stores、注册运行时 SplitImportService，并返回不含凭据的租户摘要和 store。
 - 日报账户只替换 recorder.py 的 ACCOUNTS 赋值。写入前解析并校验 Python 语法，使用临时文件替换，保留表单未管理的高级字段。mtd_start_date 是配置中心管理的可选 YYMMDD 字段，空值会清除该门店已有的 MTD 下界。
 - 同名日报账户先返回 DAILY_ACCOUNT_RECONFIGURE_REQUIRED；只有用户确认后的 force_reconfigure 才原位替换，禁止重复追加。
 - 所有校验错误和冲突使用结构化 code、message、detail，并保持 422/409 等语义状态。
@@ -31,7 +32,7 @@
 日报配置变更运行：
 
 ~~~
-python -m pytest tests/test_daily_account_configuration.py -q
+python -m pytest tests/test_daily_account_configuration.py tests/test_outcall_tenant_configuration.py -q
 ~~~
 
 线索、预分割或外呼配置变更应增加对应 API 和持久化测试。所有配置中心变更还需验证服务重启后能重新加载配置，并在跨模块变更后运行完整 tests。

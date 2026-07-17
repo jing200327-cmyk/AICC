@@ -6,13 +6,13 @@
 
 - api.py：/api/task-records 查询参数和结构化错误。
 - service.py：任务类型、状态显示、内存任务、文件系统扫描、日期筛选和去重。
-- server.py：将线索导入、预分割、外呼和日报服务注入 TaskRecordService。
+- server.py：将线索导入、预分割、外呼、日报和机器人用量服务注入 TaskRecordService。
 - aicc-frontend-demo.html：任务类型和日期筛选、刷新、详情和下载交互。
 
 # Implementation rules
 
 - 任务记录是聚合视图，不是第二套任务执行器。不得在查询中启动、重跑、停止或修改源任务。
-- 保持任务类型代码稳定：lead_import、split_preview、outcall_test、outcall_formal、daily_report。
+- 保持任务类型代码稳定：lead_import、split_preview、outcall_test、outcall_formal、daily_report、robot_quota。
 - 内存任务优先提供实时状态；文件系统扫描用于补充重启前产物。去重必须避免同一输出同时显示为 memory 和 filesystem。
 - 文件系统扫描只读取已配置的输入/输出根目录，并忽略 Excel 临时文件。
 - 任务名称、执行人、时间、输入和输出字段是前端契约。新增任务类型时同步更新 TASK_TYPES、状态映射、前端筛选和详情。

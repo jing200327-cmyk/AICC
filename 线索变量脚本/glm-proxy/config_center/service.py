@@ -139,6 +139,27 @@ class ConfigCenterService:
     def save_outcall_tenant(self, payload: dict[str, Any]) -> dict[str, Any]:
         name = self._require_text(payload.get('name'), 'name')
         prefixes = self._split_values(payload.get('prefixes')) or [name]
+        test_environment = {
+            'username': self._text(payload.get('environments_test_username')),
+            'password': self._text(payload.get('environments_test_password')),
+            'robot_id': self._text(payload.get('environments_test_robot_id')),
+            'dealer_id': self._text(payload.get('environments_test_dealer_id')),
+        }
+        prod_environment = {
+            'username': self._require_text(
+                payload.get('environments_prod_username'),
+                'environments_prod_username',
+            ),
+            'password': self._require_text(
+                payload.get('environments_prod_password'),
+                'environments_prod_password',
+            ),
+            'robot_id': self._require_text(
+                payload.get('environments_prod_robot_id'),
+                'environments_prod_robot_id',
+            ),
+            'dealer_id': self._text(payload.get('environments_prod_dealer_id')),
+        }
         existing_names = self._configured_tenant_names()
         if name in existing_names:
             raise ConfigConflictError(f'{name} 已在 config.yaml tenants 中存在')
@@ -147,23 +168,68 @@ class ConfigCenterService:
             'name': name,
             'prefixes': prefixes,
             'environments': {
-                'test': {
-                    'username': self._text(payload.get('environments_test_username')),
-                    'password': self._text(payload.get('environments_test_password')),
-                    'robot_id': self._text(payload.get('environments_test_robot_id')),
-                    'dealer_id': self._text(payload.get('environments_test_dealer_id')),
-                },
-                'prod': {
-                    'username': self._text(payload.get('environments_prod_username')),
-                    'password': self._text(payload.get('environments_prod_password')),
-                    'robot_id': self._text(payload.get('environments_prod_robot_id')),
-                    'dealer_id': self._text(payload.get('environments_prod_dealer_id')),
-                },
+                'test': test_environment,
+                'prod': prod_environment,
             },
             'task_name_template': '{tenant}{date}-{batch}',
         }
-        self._append_tenant_yaml(tenant)
-        return {'message': '自动外呼租户配置已写入 config.yaml', 'tenant': tenant}
+        data = self._load_store()
+        stores = data.setdefault('split_stores', [])
+        existing_store = next(
+            (item for item in stores if item.get('store_name') == name),
+            None,
+        )
+        runtime_store = next(
+            (item for item in self.split_service.list_stores() if item.store_name == name),
+            None,
+        )
+        store_code = (
+            (existing_store or {}).get('store_code')
+            or getattr(runtime_store, 'store_code', '')
+            or self._store_code('split', name)
+        )
+        store_item = {
+            'store_code': store_code,
+            'store_name': name,
+            'file_prefix': name,
+            'script_name': f'split_excel_{name}-模板.py',
+        }
+        if existing_store:
+            existing_store.update(store_item)
+            store_item = existing_store
+        else:
+            stores.append(store_item)
+
+        config_existed = self.outcall_config_path.exists()
+        original_config = (
+            self.outcall_config_path.read_text(encoding='utf-8')
+            if config_existed
+            else ''
+        )
+        try:
+            self._append_tenant_yaml(tenant)
+            self._save_store(data)
+        except Exception:
+            if config_existed:
+                self.outcall_config_path.write_text(original_config, encoding='utf-8')
+            elif self.outcall_config_path.exists():
+                self.outcall_config_path.unlink()
+            raise
+        self._register_split_store(store_item)
+        return {
+            'message': '自动外呼租户配置已写入 config.yaml，门店已加入预分割菜单',
+            'tenant': {
+                'name': name,
+                'prefixes': prefixes,
+                'has_test_environment': all(
+                    test_environment.get(key)
+                    for key in ('username', 'password', 'robot_id')
+                ),
+                'prod_configured': True,
+                'task_name_template': tenant['task_name_template'],
+            },
+            'store': store_item,
+        }
 
     def save_daily_account(self, payload: dict[str, Any]) -> dict[str, Any]:
         name = self._require_text(payload.get('name'), 'name')
@@ -284,15 +350,20 @@ class ConfigCenterService:
         self.outcall_config_path.write_text(f'{text}\n{block}\n', encoding='utf-8')
 
     def _tenant_yaml_block(self, tenant: dict[str, Any]) -> str:
-        lines = [f'  - name: "{tenant["name"]}"', '    prefixes:']
+        quote = lambda value: json.dumps(str(value), ensure_ascii=False)
+        lines = [f'  - name: {quote(tenant["name"])}', '    prefixes:']
         for prefix in tenant['prefixes']:
-            lines.append(f'      - "{prefix}"')
+            lines.append(f'      - {quote(prefix)}')
         lines.extend(['    environments:', '      test:'])
         for key in ('username', 'password', 'robot_id', 'dealer_id'):
-            lines.append(f'        {key}: "{tenant["environments"]["test"].get(key, "")}"')
+            lines.append(
+                f'        {key}: {quote(tenant["environments"]["test"].get(key, ""))}'
+            )
         lines.append('      prod:')
         for key in ('username', 'password', 'robot_id', 'dealer_id'):
-            lines.append(f'        {key}: "{tenant["environments"]["prod"].get(key, "")}"')
+            lines.append(
+                f'        {key}: {quote(tenant["environments"]["prod"].get(key, ""))}'
+            )
         lines.append('    task_name_template: "{tenant}{date}-{batch}"')
         return '\n'.join(lines)
 

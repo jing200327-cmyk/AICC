@@ -1167,6 +1167,96 @@
     .outcall-recovery .btn {
       width: 100%;
     }
+    .quota-toolbar {
+      display: flex;
+      align-items: end;
+      justify-content: flex-end;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .quota-toolbar .field {
+      margin: 0;
+      min-width: 170px;
+    }
+    .quota-kpis {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      border-bottom: 1px solid var(--line);
+      background: #fbfcfe;
+    }
+    .quota-kpi {
+      min-width: 0;
+      padding: 16px 18px;
+      border-right: 1px solid var(--line);
+    }
+    .quota-kpi:last-child {
+      border-right: 0;
+    }
+    .quota-kpi span {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      margin-bottom: 6px;
+    }
+    .quota-kpi strong {
+      color: #172033;
+      font-size: 24px;
+      letter-spacing: 0;
+    }
+    .quota-kpi.danger strong {
+      color: #b42318;
+    }
+    .quota-table tr.over-quota td {
+      background: #fff3f2;
+    }
+    .quota-rate {
+      display: inline-flex;
+      min-width: 74px;
+      justify-content: flex-end;
+      font-variant-numeric: tabular-nums;
+      font-weight: 700;
+    }
+    .quota-report-actions {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      border-bottom: 1px solid var(--line);
+    }
+    .quota-report-action {
+      display: flex;
+      align-items: end;
+      gap: 10px;
+      padding: 16px 18px;
+      min-width: 0;
+    }
+    .quota-report-action + .quota-report-action {
+      border-left: 1px solid var(--line);
+    }
+    .quota-report-action .field {
+      margin: 0;
+      flex: 1;
+    }
+    .quota-image-stage {
+      min-height: 260px;
+      padding: 18px;
+      overflow: auto;
+      background: #eef2f7;
+      text-align: center;
+    }
+    .quota-image-stage img {
+      display: block;
+      max-width: 100%;
+      height: auto;
+      margin: 0 auto;
+      border: 1px solid #d7dde6;
+      background: #fff;
+    }
+    .quota-image-empty {
+      display: grid;
+      place-items: center;
+      min-height: 220px;
+      color: var(--muted);
+      line-height: 1.7;
+    }
     .mobile-menu {
       display: none;
     }
@@ -1178,6 +1268,15 @@
 
       .grid.three {
         grid-template-columns: 1fr;
+      }
+      .quota-kpis {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+      .quota-kpi:nth-child(2) {
+        border-right: 0;
+      }
+      .quota-kpi:nth-child(-n+2) {
+        border-bottom: 1px solid var(--line);
       }
     }
 
@@ -1266,6 +1365,25 @@
       .date-range-separator {
         display: none;
       }
+      .quota-toolbar,
+      .quota-report-actions,
+      .quota-report-action {
+        display: grid;
+        grid-template-columns: 1fr;
+        width: 100%;
+      }
+      .quota-report-action + .quota-report-action {
+        border-left: 0;
+        border-top: 1px solid var(--line);
+      }
+      .quota-kpis {
+        grid-template-columns: 1fr;
+      }
+      .quota-kpi,
+      .quota-kpi:nth-child(2) {
+        border-right: 0;
+        border-bottom: 1px solid var(--line);
+      }
     }
   </style>
 </head>
@@ -1321,6 +1439,7 @@
         <option value="daily">龙星行日报</option>
         <option value="tasks">任务记录</option>
         <option value="config">配置中心</option>
+        <option value='quota'>机器人用量监控</option>
       </select>
       <nav class="menu" aria-label="主菜单">
         <button class="nav active" data-page="lead"><span>⬆</span>线索导入</button>
@@ -1335,6 +1454,7 @@
         <button class="nav" data-page="daily"><span>▤</span>龙星行日报</button>
         <button class="nav" data-page="tasks"><span>◷</span>任务记录</button>
         <button class="nav" data-page="config"><span>⚙</span>配置中心</button>
+        <button class='nav' data-page='quota'><span>◫</span>机器人用量监控</button>
       </nav>
       <div class="side-foot">
         <div>环境：内网演示</div>
@@ -1722,17 +1842,17 @@
                     <div class="config-grid">
                       <div class="field"><label for="outcallConfigName">name</label><input class="input" id="outcallConfigName" name="name"></div>
                       <div class="field"><label for="outcallConfigPrefixes">prefixes</label><textarea class="input" id="outcallConfigPrefixes" name="prefixes" placeholder="一行一个前缀，例如：&#10;天翔林肯&#10;武汉天翔"></textarea></div>
-                      <div class="field"><label for="outcallTestUsername">environments_test_username</label><input class="input" id="outcallTestUsername" name="environments_test_username"></div>
-                      <div class="field"><label for="outcallTestPassword">environments_test_password</label><input class="input" id="outcallTestPassword" name="environments_test_password" type="password"></div>
-                      <div class="field"><label for="outcallTestRobotId">environments_test_robot_id</label><input class="input" id="outcallTestRobotId" name="environments_test_robot_id"></div>
-                      <div class="field"><label for="outcallTestDealerId">environments_test_dealer_id</label><input class="input" id="outcallTestDealerId" name="environments_test_dealer_id"></div>
-                      <div class="field"><label for="outcallProdUsername">environments_prod_username</label><input class="input" id="outcallProdUsername" name="environments_prod_username"></div>
-                      <div class="field"><label for="outcallProdPassword">environments_prod_password</label><input class="input" id="outcallProdPassword" name="environments_prod_password" type="password"></div>
-                      <div class="field"><label for="outcallProdRobotId">environments_prod_robot_id</label><input class="input" id="outcallProdRobotId" name="environments_prod_robot_id"></div>
+                      <div class="field"><label for="outcallTestUsername">environments_test_username（可选）</label><input class="input" id="outcallTestUsername" name="environments_test_username"></div>
+                      <div class="field"><label for="outcallTestPassword">environments_test_password（可选）</label><input class="input" id="outcallTestPassword" name="environments_test_password" type="password"></div>
+                      <div class="field"><label for="outcallTestRobotId">environments_test_robot_id（可选）</label><input class="input" id="outcallTestRobotId" name="environments_test_robot_id"></div>
+                      <div class="field"><label for="outcallTestDealerId">environments_test_dealer_id（可选）</label><input class="input" id="outcallTestDealerId" name="environments_test_dealer_id"></div>
+                      <div class="field"><label for="outcallProdUsername">environments_prod_username *</label><input class="input" id="outcallProdUsername" name="environments_prod_username" required></div>
+                      <div class="field"><label for="outcallProdPassword">environments_prod_password *</label><input class="input" id="outcallProdPassword" name="environments_prod_password" type="password" required></div>
+                      <div class="field"><label for="outcallProdRobotId">environments_prod_robot_id *</label><input class="input" id="outcallProdRobotId" name="environments_prod_robot_id" required></div>
                       <div class="field"><label for="outcallProdDealerId">environments_prod_dealer_id</label><input class="input" id="outcallProdDealerId" name="environments_prod_dealer_id"></div>
                     </div>
                     <div class="config-status-line">
-                      <span class="hint">确认后将按租户模板追加到 config.yaml 的 tenants 中。</span>
+                      <span class="hint">确认后将租户追加到 config.yaml，并同步加入左侧预分割&自动外呼门店菜单。测试环境字段和 dealer_id 可留空。</span>
                       <button class="btn primary" type="submit">确认配置</button>
                     </div>
                   </div>
@@ -1774,7 +1894,77 @@
               </div>
             </div>
           </div>
-        </section>      </div>
+        </section>
+
+        <section class='page' id='page-quota'>
+          <div class='page-title'>
+            <div>
+              <h1>机器人用量监控</h1>
+              <p>按日统计机器人有效通话通次，排除“未接通-线路限制”，并依据门店限额识别超量机器人。</p>
+            </div>
+            <div class='quota-toolbar'>
+              <div class='field'>
+                <label for='robotQuotaDate'>统计日期</label>
+                <input class='input' id='robotQuotaDate' type='date'>
+              </div>
+              <button class='btn primary' id='generateRobotQuota' type='button'>产出外呼机器人用量</button>
+            </div>
+          </div>
+
+          <div class='panel'>
+            <div class='panel-head'>
+              <h2>指定日期机器人外呼用量表</h2>
+              <div class='toolbar'>
+                <span class='status gray' id='robotQuotaStatus'>待产出</span>
+                <button class='btn' id='downloadRobotQuota' type='button' disabled>下载 Excel</button>
+              </div>
+            </div>
+            <div class='quota-kpis' aria-label='机器人用量概览'>
+              <div class='quota-kpi'><span>统计机器人</span><strong id='robotQuotaRobotCount'>0</strong></div>
+              <div class='quota-kpi danger'><span>超量机器人</span><strong id='robotQuotaOverCount'>0</strong></div>
+              <div class='quota-kpi'><span>有效通话通次</span><strong id='robotQuotaCallCount'>0</strong></div>
+              <div class='quota-kpi'><span>已排除线路限制</span><strong id='robotQuotaExcludedCount'>0</strong></div>
+            </div>
+            <div class='table-wrap'>
+              <table class='quota-table'>
+                <thead>
+                  <tr><th>机器人 ID</th><th>机器人名称</th><th>门店</th><th>通话通次 A</th><th>每日限额</th><th>用量 B</th><th>状态</th><th>排除线路限制</th></tr>
+                </thead>
+                <tbody id='robotQuotaRows'>
+                  <tr><td colspan='8'>请选择日期并产出外呼机器人用量。</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class='notice' id='robotQuotaNotice' style='margin:14px 16px 16px;'>默认限额为 200 通次；番禺售后为 400 通次。B = A ÷ 每日限额，超过 100% 时标记为超量。</div>
+          </div>
+
+          <div class='panel' style='margin-top:16px;'>
+            <div class='panel-head'>
+              <h2>机器人用量日报 / 周报</h2>
+              <span class='status gray' id='robotQuotaReportStatus'>待生成</span>
+            </div>
+            <div class='quota-report-actions'>
+              <div class='quota-report-action'>
+                <div class='field'>
+                  <label>日报数据</label>
+                  <div class='file-path-hint'>使用上方当前统计日期已产出的机器人用量表。</div>
+                </div>
+                <button class='btn primary' id='generateRobotQuotaDailyImage' type='button'>产出日报</button>
+              </div>
+              <div class='quota-report-action'>
+                <div class='field'>
+                  <label for='robotQuotaWeek'>周报周期</label>
+                  <input class='input' id='robotQuotaWeek' type='week'>
+                </div>
+                <button class='btn primary' id='generateRobotQuotaWeeklyImage' type='button'>产出周报</button>
+              </div>
+            </div>
+            <div class='quota-image-stage' id='robotQuotaImageStage' aria-live='polite'>
+              <div class='quota-image-empty'>生成后将在此预览日报或周报 PNG，可直接在浏览器中查看和保存。</div>
+            </div>
+          </div>
+        </section>
+      </div>
     </main>
   </section>
 
@@ -1881,6 +2071,27 @@
       </div>
     </div>
   </div>
+  <div class='modal-backdrop' id=splitOutputModeModal aria-hidden=true>
+    <div class=modal-panel role=dialog aria-modal=true aria-labelledby=splitOutputModeModalTitle>
+      <div class=modal-head>
+        <h3 id=splitOutputModeModalTitle>当日已有分割文件</h3>
+        <button class=btn id=splitOutputModeClose type=button>取消</button>
+      </div>
+      <div class=modal-body>
+        <p class=hint id=splitOutputModeHint>请选择覆盖原文件，或保留上午批次并继续添加新文件。</p>
+        <div class=notice>
+          继续添加会保留当前门店今日已有文件，本次全部新线索按每 45 条一批，从现有最大正式批次号之后接续命名，不会再次生成“测试”文件。
+        </div>
+        <div class='reader muted' id=splitExistingFiles style='min-height:120px;max-height:240px;margin-top:14px;'></div>
+      </div>
+      <div class=modal-foot>
+        <button class=btn id=splitOutputModeCancel type=button>取消预览</button>
+        <button class='btn danger' id=splitOutputModeOverwrite type=button>覆盖原文件</button>
+        <button class='btn primary' id=splitOutputModeAppend type=button>继续添加</button>
+      </div>
+    </div>
+  </div>
+
   <script>
     const loginPage = document.getElementById('loginPage');
     const app = document.getElementById('app');
@@ -1889,7 +2100,8 @@
       split: '线索预分割&自动外呼',
       daily: '龙星行日报',
       tasks: '任务记录',
-      config: '配置中心'
+      config: '配置中心',
+      quota: '机器人用量监控'
     };
 
     document.getElementById('loginForm').addEventListener('submit', (event) => {
@@ -1929,6 +2141,7 @@
     const splitApiBaseUrl = 'http://127.0.0.1:18765/api/leads/split';
     const outcallApiBaseUrl = 'http://127.0.0.1:18765/api/leads/outcall';
     const dailyApiBaseUrl = 'http://127.0.0.1:18765/api/daily-report';
+    const robotQuotaApiBaseUrl = 'http://127.0.0.1:18765/api/robot-quota';
     const taskRecordApiBaseUrl = 'http://127.0.0.1:18765/api/task-records';
     const configApiBaseUrl = 'http://127.0.0.1:18765/api/config-center';
     let dailyCurrentJobId = '';
@@ -1938,6 +2151,8 @@
     let monthlySummaryMonthsLoaded = false;
     let monthlySummaryResult = null;
     let allStoreSummaryResult = null;
+    let robotQuotaPollTimer = null;
+    let robotQuotaPreviewDate = '';
     let taskRecordCache = [];
     const splitStoreCodeMap = {
       '合肥马自达': 'hefei_mazda',
@@ -2223,19 +2438,23 @@
 
     function applySplitPreview(job) {
       job.outputs = sortSplitOutputs(job.outputs || []);
+      job.all_outputs = sortSplitOutputs(job.all_outputs || []);
       splitPreviewJobs[currentSplitStore] = job;
-      const testCount = job.outputs.find(output => output.batch_key === 'test')?.row_count || 0;
-      const formalCount = job.outputs.filter(output => output.batch_key !== 'test').length;
-      const totalCount = job.outputs.reduce((sum, output) => sum + (Number(output.row_count) || 0), 0);
+      const displayOutputs = job.all_outputs.length ? job.all_outputs : job.outputs;
+      const testCount = displayOutputs.find(output => output.batch_key === 'test')?.row_count || 0;
+      const formalCount = displayOutputs.filter(output => output.batch_key !== 'test').length;
+      const totalCount = displayOutputs.reduce((sum, output) => sum + (Number(output.row_count) || 0), 0);
       document.getElementById('splitStatus').className = 'status ok';
       document.getElementById('splitStatus').textContent = '预览完成';
       document.getElementById('testCount').textContent = String(testCount);
       document.getElementById('batchCount').textContent = String(formalCount);
       document.getElementById('totalSplitCount').textContent = String(totalCount);
-      renderSplitBatchOptions(job.outputs);
+      renderSplitBatchOptions(displayOutputs);
       updateSplitReader(document.getElementById('splitBatchSelect').value);
       document.getElementById('formalState').className = 'status gray';
-      document.getElementById('formalState').textContent = `已生成 ${job.outputs.length} 个分割文件，待推出`;
+      document.getElementById('formalState').textContent = job.output_mode === 'append'
+        ? '本次新增 ' + job.outputs.length + ' 个文件，今日共 ' + displayOutputs.length + ' 个'
+        : '已生成 ' + job.outputs.length + ' 个分割文件，待推出';
       saveCurrentSplitState();
     }
 
@@ -2520,7 +2739,55 @@
       }
     });
 
-    document.getElementById('previewSplit').addEventListener('click', async () => {
+    let splitOutputModeResolver = null;
+
+    function closeSplitOutputModeModal(choice = '') {
+      const modal = document.getElementById('splitOutputModeModal');
+      modal.classList.remove('open');
+      modal.setAttribute('aria-hidden', 'true');
+      const resolver = splitOutputModeResolver;
+      splitOutputModeResolver = null;
+      if (resolver) resolver(choice);
+    }
+
+    function requestSplitOutputMode(error) {
+      const existingFiles = Array.isArray(error.existing_files) ? error.existing_files : [];
+      const storeName = error.store_name || currentSplitStore;
+      document.getElementById('splitOutputModeHint').textContent =
+        '【' + storeName + '】今日已有 ' + existingFiles.length +
+        ' 个分割文件。请选择本次预览的保存方式。';
+      document.getElementById('splitExistingFiles').textContent =
+        '当前目录：' + (error.output_dir || '当日门店目录') + '\n\n' +
+        (existingFiles.length
+          ? existingFiles.map((name, index) => (index + 1) + '. ' + name).join('\n')
+          : '未返回现有文件清单');
+      const modal = document.getElementById('splitOutputModeModal');
+      modal.classList.add('open');
+      modal.setAttribute('aria-hidden', 'false');
+      return new Promise(resolve => {
+        splitOutputModeResolver = resolve;
+      });
+    }
+
+    async function submitSplitPreviewRequest(storeCode, filename, outputMode = '') {
+      const payload = { store_code: storeCode, filename };
+      if (outputMode) payload.output_mode = outputMode;
+      const response = await fetch(splitApiBaseUrl + '/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const body = await parseApiResponse(response);
+      if (!response.ok) throw body.error || body;
+      return body;
+    }
+
+    document.getElementById('splitOutputModeClose').addEventListener('click', () => closeSplitOutputModeModal());
+    document.getElementById('splitOutputModeCancel').addEventListener('click', () => closeSplitOutputModeModal());
+    document.getElementById('splitOutputModeOverwrite').addEventListener('click', () => closeSplitOutputModeModal('overwrite'));
+    document.getElementById('splitOutputModeAppend').addEventListener('click', () => closeSplitOutputModeModal('append'));
+
+    document.getElementById('previewSplit').addEventListener('click', async event => {
       const storeCode = splitStoreCodeMap[currentSplitStore];
       const filename = document.getElementById('splitFileSelect').value;
       if (!filename) {
@@ -2529,24 +2796,41 @@
         document.getElementById('splitReader').textContent = '请先点击“刷新文件列表”，并选择当前门店对应的 Excel 模板文件。';
         return;
       }
+      const previewButton = event.currentTarget;
+      previewButton.disabled = true;
       document.getElementById('splitStatus').className = 'status info';
       document.getElementById('splitStatus').textContent = '分割处理中';
       document.getElementById('splitReader').classList.add('muted');
       document.getElementById('splitReader').textContent = `正在执行 ${currentSplitStore} 的分割脚本，文件入口：${filename}`;
       try {
-        const response = await fetch(`${splitApiBaseUrl}/preview`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ store_code: storeCode, filename }),
-        });
-        const body = await parseApiResponse(response);
-        if (!response.ok) throw body.error || body;
+        let body;
+        try {
+          body = await submitSplitPreviewRequest(storeCode, filename);
+        } catch (error) {
+          if (error?.code !== 'SPLIT_OUTPUT_CONFLICT') throw error;
+          const outputMode = await requestSplitOutputMode(error);
+          if (!outputMode) {
+            document.getElementById('splitStatus').className = 'status warn';
+            document.getElementById('splitStatus').textContent = '已取消预览';
+            document.getElementById('splitReader').textContent = '已保留当日现有分割文件，本次未生成新文件。';
+            saveCurrentSplitState();
+            return;
+          }
+          const actionText = outputMode === 'append'
+            ? '保留原文件并接续批次编号'
+            : '覆盖当日门店目录中的原文件';
+          document.getElementById('splitReader').textContent =
+            '正在' + actionText + '，请勿重复点击预览按钮。';
+          body = await submitSplitPreviewRequest(storeCode, filename, outputMode);
+        }
         applySplitPreview(body);
       } catch (error) {
         document.getElementById('splitStatus').className = 'status danger';
         document.getElementById('splitStatus').textContent = '预览失败';
         document.getElementById('splitReader').textContent = formatSplitError(error);
         saveCurrentSplitState();
+      } finally {
+        previewButton.disabled = false;
       }
     });
 
@@ -2590,7 +2874,8 @@
 
     function updateSplitReader(batchKey) {
       const job = splitPreviewJobs[currentSplitStore];
-      const output = job?.outputs?.find(item => item.batch_key === batchKey);
+      const displayOutputs = job?.all_outputs?.length ? job.all_outputs : job?.outputs;
+      const output = displayOutputs?.find(item => item.batch_key === batchKey);
       const reader = document.getElementById('splitReader');
       if (!output) {
         reader.classList.add('muted');
@@ -2790,6 +3075,198 @@
         '"': '&quot;',
         "'": '&#39;',
       }[char]));
+    }
+
+    function setRobotQuotaStatus(className, text) {
+      const target = document.getElementById('robotQuotaStatus');
+      target.className = `status ${className}`;
+      target.textContent = text;
+    }
+
+    function renderRobotQuotaPreview(data) {
+      const robots = data.robots || [];
+      robotQuotaPreviewDate = data.report_date || robotQuotaPreviewDate;
+      const overCount = robots.filter(item => item.is_over_quota).length;
+      const callCount = robots.reduce((total, item) => total + Number(item.call_count || 0), 0);
+      const excludedCount = robots.reduce((total, item) => total + Number(item.excluded_line_limit_count || 0), 0);
+      document.getElementById('robotQuotaRobotCount').textContent = String(robots.length);
+      document.getElementById('robotQuotaOverCount').textContent = String(overCount);
+      document.getElementById('robotQuotaCallCount').textContent = String(callCount);
+      document.getElementById('robotQuotaExcludedCount').textContent = String(excludedCount);
+
+      const rows = document.getElementById('robotQuotaRows');
+      rows.innerHTML = robots.length ? robots.map(item => {
+        const rate = Number(item.usage_rate || 0) * 100;
+        const statusClass = item.is_over_quota ? 'danger' : 'ok';
+        return `
+          <tr class='${item.is_over_quota ? 'over-quota' : ''}'>
+            <td>${escapeHtml(item.robot_id || '未识别')}</td>
+            <td>${escapeHtml(item.robot_name || '--')}</td>
+            <td>${escapeHtml(item.store_name || '--')}</td>
+            <td>${escapeHtml(item.call_count ?? 0)}</td>
+            <td>${escapeHtml(item.quota ?? 0)}</td>
+            <td><span class='quota-rate'>${rate.toFixed(2)}%</span></td>
+            <td><span class='status ${statusClass}'>${escapeHtml(item.status || (item.is_over_quota ? '超量' : '正常'))}</span></td>
+            <td>${escapeHtml(item.excluded_line_limit_count ?? 0)}</td>
+          </tr>`;
+      }).join('') : '<tr><td colspan=8>该日期没有可统计的机器人话单。</td></tr>';
+
+      const sourceLabels = {
+        daily_report_reuse: '已复用日报原始话单',
+        daily_chain: '已通过日报链路补齐原始话单',
+        raw_file_reuse: '已复用现有原始话单',
+        workbook: '已读取历史用量表',
+      };
+      const warnings = data.warnings || [];
+      const warningText = warnings.length ? `；注意：${warnings.join('；')}` : '';
+      document.getElementById('robotQuotaNotice').textContent = `${sourceLabels[data.source_mode] || '统计完成'}。默认限额 200 通次，番禺售后 400 通次${warningText}`;
+      document.getElementById('downloadRobotQuota').disabled = false;
+      setRobotQuotaStatus(overCount ? 'danger' : 'ok', overCount ? `${overCount} 个超量` : '全部正常');
+    }
+
+    async function loadRobotQuotaPreview(reportDate) {
+      const params = new URLSearchParams({ report_date: reportDate });
+      const response = await fetch(`${robotQuotaApiBaseUrl}/preview?${params.toString()}`);
+      const body = await parseApiResponse(response);
+      if (!response.ok) throw body.error || body;
+      renderRobotQuotaPreview(body);
+      return body;
+    }
+
+    async function pollRobotQuotaJob(jobId) {
+      if (robotQuotaPollTimer) clearTimeout(robotQuotaPollTimer);
+      try {
+        const response = await fetch(`${robotQuotaApiBaseUrl}/jobs/${jobId}`);
+        const body = await parseApiResponse(response);
+        if (!response.ok) throw body.error || body;
+        if (body.status === 'running') {
+          setRobotQuotaStatus('info', '统计中');
+          robotQuotaPollTimer = setTimeout(() => pollRobotQuotaJob(jobId), 2500);
+          return;
+        }
+        if (body.status === 'failed') throw body.error || body;
+        await loadRobotQuotaPreview(body.report_date);
+      } catch (error) {
+        setRobotQuotaStatus('danger', '产出失败');
+        document.getElementById('robotQuotaNotice').textContent = formatSplitError(error);
+      }
+    }
+
+    async function generateRobotQuota() {
+      const reportDate = dateInputToReportDate(document.getElementById('robotQuotaDate').value);
+      if (!reportDate) {
+        alert('请选择统计日期');
+        return;
+      }
+      if (!confirm(`确认产出 ${reportDate} 外呼机器人用量表？`)) return;
+      const button = document.getElementById('generateRobotQuota');
+      button.disabled = true;
+      setRobotQuotaStatus('info', '启动中');
+      document.getElementById('robotQuotaNotice').textContent = '正在检查日报产物和原始话单；缺失数据将按龙星行日报链路补拉。';
+      try {
+        const response = await fetch(`${robotQuotaApiBaseUrl}/jobs`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ report_date: reportDate }),
+        });
+        const body = await parseApiResponse(response);
+        if (!response.ok) throw body.error || body;
+        pollRobotQuotaJob(body.job_id);
+      } catch (error) {
+        setRobotQuotaStatus('danger', '启动失败');
+        document.getElementById('robotQuotaNotice').textContent = formatSplitError(error);
+      } finally {
+        button.disabled = false;
+      }
+    }
+
+    function isoWeekRange(value) {
+      const match = /^(\d{4})-W(\d{2})$/.exec(value || '');
+      if (!match) return null;
+      const year = Number(match[1]);
+      const week = Number(match[2]);
+      const januaryFourth = new Date(Date.UTC(year, 0, 4));
+      const januaryFourthDay = (januaryFourth.getUTCDay() + 6) % 7;
+      const monday = new Date(januaryFourth);
+      monday.setUTCDate(januaryFourth.getUTCDate() - januaryFourthDay + (week - 1) * 7);
+      const sunday = new Date(monday);
+      sunday.setUTCDate(monday.getUTCDate() + 6);
+      const format = dateValue => dateValue.toISOString().slice(0, 10);
+      return { start: format(monday), end: format(sunday) };
+    }
+
+    function currentIsoWeekValue() {
+      const now = new Date();
+      const dateValue = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
+      const day = dateValue.getUTCDay() || 7;
+      dateValue.setUTCDate(dateValue.getUTCDate() + 4 - day);
+      const yearStart = new Date(Date.UTC(dateValue.getUTCFullYear(), 0, 1));
+      const week = Math.ceil((((dateValue - yearStart) / 86400000) + 1) / 7);
+      return `${dateValue.getUTCFullYear()}-W${String(week).padStart(2, '0')}`;
+    }
+
+    function showRobotQuotaImage(url, title) {
+      const stage = document.getElementById('robotQuotaImageStage');
+      stage.innerHTML = `<img src='${escapeHtml(url)}' alt='${escapeHtml(title)}'>`;
+      stage.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    }
+
+    async function generateRobotQuotaDailyImage() {
+      const reportDate = dateInputToReportDate(document.getElementById('robotQuotaDate').value);
+      if (!reportDate) {
+        alert('请选择日报日期');
+        return;
+      }
+      const status = document.getElementById('robotQuotaReportStatus');
+      status.className = 'status info';
+      status.textContent = '日报生成中';
+      try {
+        const response = await fetch(`${robotQuotaApiBaseUrl}/reports/daily`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ report_date: reportDate }),
+        });
+        const body = await parseApiResponse(response);
+        if (!response.ok) throw body.error || body;
+        const params = new URLSearchParams({ report_date: reportDate, t: String(Date.now()) });
+        showRobotQuotaImage(`${robotQuotaApiBaseUrl}/reports/daily/image?${params.toString()}`, `${reportDate}机器人用量日报`);
+        status.className = 'status ok';
+        status.textContent = '日报已生成';
+      } catch (error) {
+        status.className = 'status danger';
+        status.textContent = '日报失败';
+        alert(formatSplitError(error));
+      }
+    }
+
+    async function generateRobotQuotaWeeklyImage() {
+      const range = isoWeekRange(document.getElementById('robotQuotaWeek').value);
+      if (!range) {
+        alert('请选择周报周期');
+        return;
+      }
+      const periodStart = dateInputToReportDate(range.start);
+      const periodEnd = dateInputToReportDate(range.end);
+      const status = document.getElementById('robotQuotaReportStatus');
+      status.className = 'status info';
+      status.textContent = '周报生成中';
+      try {
+        const response = await fetch(`${robotQuotaApiBaseUrl}/reports/weekly`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ period_start: periodStart, period_end: periodEnd }),
+        });
+        const body = await parseApiResponse(response);
+        if (!response.ok) throw body.error || body;
+        const params = new URLSearchParams({ period_start: periodStart, period_end: periodEnd, t: String(Date.now()) });
+        showRobotQuotaImage(`${robotQuotaApiBaseUrl}/reports/weekly/image?${params.toString()}`, `${periodStart}-${periodEnd}机器人用量周报`);
+        status.className = 'status ok';
+        status.textContent = '周报已生成';
+      } catch (error) {
+        status.className = 'status danger';
+        status.textContent = '周报失败';
+        alert(formatSplitError(error));
+      }
     }
 
     function setDailySteps(status) {
@@ -3912,7 +4389,16 @@
 
     document.getElementById('outcallTenantConfigForm').addEventListener('submit', async event => {
       event.preventDefault();
-      await submitJsonConfig(event.currentTarget, 'configOutcallStatus', 'outcall-tenants', '租户已写入');
+      const body = await submitJsonConfig(
+        event.currentTarget,
+        'configOutcallStatus',
+        'outcall-tenants',
+        '租户与门店已写入',
+      );
+      if (body?.store) {
+        ensureSplitStore(body.store.store_name, body.store.store_code);
+        renderSplitStoreMenu();
+      }
     });
 
     document.getElementById('dailyAccountConfigForm').addEventListener('submit', async event => {
@@ -3922,6 +4408,24 @@
 
     document.getElementById('dailyHasMultipleRobots').addEventListener('change', updateDailyRobotFields);
     document.getElementById('refreshConfigSummary').addEventListener('click', refreshConfigSummary);
+    document.getElementById('robotQuotaDate').value = todayDateInputValue();
+    document.getElementById('robotQuotaWeek').value = currentIsoWeekValue();
+    document.getElementById('generateRobotQuota').addEventListener('click', generateRobotQuota);
+    document.getElementById('generateRobotQuotaDailyImage').addEventListener('click', generateRobotQuotaDailyImage);
+    document.getElementById('generateRobotQuotaWeeklyImage').addEventListener('click', generateRobotQuotaWeeklyImage);
+    document.getElementById('downloadRobotQuota').addEventListener('click', () => {
+      const reportDate = dateInputToReportDate(document.getElementById('robotQuotaDate').value);
+      if (!reportDate) return;
+      window.open(`${robotQuotaApiBaseUrl}/workbook?report_date=${encodeURIComponent(reportDate)}`, '_blank');
+    });
+    document.getElementById('robotQuotaDate').addEventListener('change', () => {
+      document.getElementById('downloadRobotQuota').disabled = true;
+      setRobotQuotaStatus('gray', '待读取');
+    });
+    const robotQuotaTaskOption = document.createElement('option');
+    robotQuotaTaskOption.value = 'robot_quota';
+    robotQuotaTaskOption.textContent = '机器人用量监控';
+    document.getElementById('taskTypeFilter').appendChild(robotQuotaTaskOption);
     refreshConfigSummary();
     function reportCard(name, total, rate, valid, top) {
       return `<div class="report-section"><h3>${name}</h3><dl><div><dt>新增线索</dt><dd>${total}</dd></div><div><dt>接通率</dt><dd>${rate}</dd></div><div><dt>有效线索</dt><dd>${valid}</dd></div><div><dt>TOP 未接通</dt><dd>${top}</dd></div></dl></div>`;

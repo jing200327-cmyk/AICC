@@ -48,6 +48,22 @@ class SplitSchemaError(SplitImportError):
     message = 'Excel file is missing required columns'
 
 
+class InvalidSplitOutputModeError(SplitImportError):
+    code = 'INVALID_SPLIT_OUTPUT_MODE'
+    message = 'Split output mode must be overwrite or append'
+
+
+class SplitOutputConflictError(SplitImportError):
+    code = 'SPLIT_OUTPUT_CONFLICT'
+    message = 'Split output files already exist'
+
+    def __init__(self, store_name: str, output_dir: Path, existing_files: list[str]):
+        self.store_name = store_name
+        self.output_dir = str(output_dir)
+        self.existing_files = existing_files
+        super().__init__(f'{store_name} 当日已有分割文件，请选择覆盖或继续追加')
+
+
 class SplitImportService:
     def __init__(self, split_root: Path):
         self.split_root = Path(split_root)
@@ -85,13 +101,26 @@ class SplitImportService:
                 files.append(self._source_file(path))
         return files
 
-    def preview_split(self, store_code: str, filename: str) -> SplitJob:
+    def preview_split(self, store_code: str, filename: str, output_mode: str = '') -> SplitJob:
         store = self.get_store(store_code)
         source_path = self._resolve_source_file(store, filename)
         source = self._source_file(source_path)
         job_id = f"split_{datetime.now().strftime('%Y%m%d')}_{uuid.uuid4().hex[:10]}"
         output_dir = self.split_root / datetime.now().strftime('%y%m%d') / store.store_name
         output_dir.mkdir(parents=True, exist_ok=True)
+        base_name = source_path.stem.split('-')[0]
+        existing_files = self._list_output_files(output_dir, base_name)
+        output_mode = str(output_mode or '').strip().lower()
+        if output_mode and output_mode not in {'overwrite', 'append'}:
+            raise InvalidSplitOutputModeError(output_mode)
+        if existing_files and not output_mode:
+            raise SplitOutputConflictError(
+                store.store_name,
+                output_dir,
+                [path.name for path in existing_files],
+            )
+        if not output_mode:
+            output_mode = 'overwrite'
 
         try:
             df = pd.read_excel(source_path, converters={'被叫号码': normalize_phone, '客户真实手机号': normalize_phone})
@@ -106,27 +135,34 @@ class SplitImportService:
             outputs: list[SplitOutputFile] = []
             invalid_rows = 0
             valid_rows = 0
-            base_name = source_path.stem.split('-')[0]
-            self._clear_output_dir(output_dir)
-            self._clear_legacy_output_files(output_dir.parent, base_name)
+            if output_mode == 'overwrite':
+                self._clear_output_dir(output_dir)
+                self._clear_legacy_output_files(output_dir.parent, base_name)
+                if len(df) > 0:
+                    test_output, test_invalid = self._write_batch(
+                        df.iloc[:TEST_FILE_ROWS],
+                        output_dir / f'{base_name}-测试.xlsx',
+                        'test',
+                        '测试批次',
+                    )
+                    invalid_rows += test_invalid
+                    valid_rows += test_output.row_count
+                    outputs.append(test_output)
+                remaining_df = df.iloc[TEST_FILE_ROWS:]
+                first_batch_number = START_NUMBER
+            else:
+                remaining_df = df
+                first_batch_number = self._next_batch_number(existing_files, base_name)
 
-            if len(df) > 0:
-                test_output, test_invalid = self._write_batch(
-                    df.iloc[:TEST_FILE_ROWS],
-                    output_dir / f'{base_name}-测试.xlsx',
-                    'test',
-                    '测试批次',
-                )
-                invalid_rows += test_invalid
-                valid_rows += test_output.row_count
-                outputs.append(test_output)
-            remaining_df = df.iloc[TEST_FILE_ROWS:]
-
-            num_files = (len(remaining_df) + CHUNK_SIZE - 1) // CHUNK_SIZE if len(remaining_df) > 0 else 0
+            num_files = (
+                (len(remaining_df) + CHUNK_SIZE - 1) // CHUNK_SIZE
+                if len(remaining_df) > 0
+                else 0
+            )
             for index in range(num_files):
                 start_idx = index * CHUNK_SIZE
                 end_idx = min((index + 1) * CHUNK_SIZE, len(remaining_df))
-                batch_number = START_NUMBER + index
+                batch_number = first_batch_number + index
                 output, batch_invalid = self._write_batch(
                     remaining_df.iloc[start_idx:end_idx],
                     output_dir / f'{base_name}-{batch_number}.xlsx',
@@ -137,6 +173,7 @@ class SplitImportService:
                 valid_rows += output.row_count
                 outputs.append(output)
 
+            all_outputs = self._read_all_outputs(output_dir, base_name)
             job = SplitJob(
                 job_id=job_id,
                 status='completed',
@@ -150,6 +187,8 @@ class SplitImportService:
                 valid_rows=valid_rows,
                 invalid_rows=invalid_rows,
                 created_at=datetime.now().isoformat(),
+                output_mode=output_mode,
+                all_outputs=all_outputs,
             )
         except SplitImportError as exc:
             job = SplitJob(
@@ -166,6 +205,7 @@ class SplitImportService:
                 invalid_rows=0,
                 created_at=datetime.now().isoformat(),
                 error={'code': exc.code, 'message': exc.message, 'detail': exc.detail},
+                output_mode=output_mode,
             )
         except Exception as exc:
             job = SplitJob(
@@ -182,9 +222,69 @@ class SplitImportService:
                 invalid_rows=0,
                 created_at=datetime.now().isoformat(),
                 error={'code': 'SPLIT_EXECUTION_FAILED', 'message': 'Split execution failed', 'detail': str(exc)},
+                output_mode=output_mode,
             )
         self.jobs[job.job_id] = job
         return job
+
+    def _list_output_files(self, output_dir: Path, base_name: str) -> list[Path]:
+        if not output_dir.exists():
+            return []
+        files = [
+            path
+            for path in output_dir.glob(f'{base_name}-*.xlsx')
+            if path.is_file() and not path.name.startswith('~$')
+        ]
+        return sorted(files, key=lambda path: self._output_file_sort_key(path, base_name))
+
+    def _output_file_sort_key(self, path: Path, base_name: str) -> tuple[int, int]:
+        suffix = path.stem[len(base_name) + 1:]
+        if suffix == '测试':
+            return (0, 0)
+        return (1, int(suffix)) if suffix.isdigit() else (2, 0)
+
+    def _next_batch_number(self, existing_files: list[Path], base_name: str) -> int:
+        numbers = []
+        for path in existing_files:
+            suffix = path.stem[len(base_name) + 1:]
+            if suffix.isdigit():
+                numbers.append(int(suffix))
+        return max(numbers, default=START_NUMBER - 1) + 1
+
+    def _read_all_outputs(self, output_dir: Path, base_name: str) -> list[SplitOutputFile]:
+        return [
+            self._read_output_file(path, base_name)
+            for path in self._list_output_files(output_dir, base_name)
+        ]
+
+    def _read_output_file(self, path: Path, base_name: str) -> SplitOutputFile:
+        df = pd.read_excel(
+            path,
+            converters={'被叫号码': normalize_phone, '客户真实手机号': normalize_phone},
+        )
+        for column in ('被叫号码', '客户真实手机号'):
+            if column in df.columns:
+                df[column] = df[column].apply(normalize_phone)
+        suffix = path.stem[len(base_name) + 1:]
+        if suffix == '测试':
+            batch_key = 'test'
+            batch_name = '测试批次'
+        else:
+            batch_key = f'formal{suffix}'
+            batch_name = f'正式批次 {suffix}'
+        preview_rows = [
+            mask_row(record)
+            for record in df.head(5).fillna('').to_dict(orient='records')
+        ]
+        return SplitOutputFile(
+            batch_key=batch_key,
+            batch_name=batch_name,
+            filename=path.name,
+            path=str(path),
+            row_count=len(df),
+            columns=[str(column) for column in df.columns],
+            preview_rows=preview_rows,
+        )
 
     def _delete_output_file(self, path: Path) -> None:
         try:

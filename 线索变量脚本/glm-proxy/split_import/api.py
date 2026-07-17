@@ -5,7 +5,14 @@ from dataclasses import asdict
 from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
 
-from .service import InvalidSplitStoreError, SplitFileNotFoundError, SplitImportError, SplitImportService, job_to_dict
+from .service import (
+    InvalidSplitStoreError,
+    SplitFileNotFoundError,
+    SplitImportError,
+    SplitImportService,
+    SplitOutputConflictError,
+    job_to_dict,
+)
 
 
 def error_response(code: str, message: str, detail: str = '', status_code: int = 400) -> JSONResponse:
@@ -30,14 +37,30 @@ def create_router(service: SplitImportService) -> APIRouter:
     async def preview_split(payload: dict):
         store_code = str(payload.get('store_code') or '')
         filename = str(payload.get('filename') or '')
+        output_mode = str(payload.get('output_mode') or '')
         if not store_code:
             return error_response('MISSING_STORE_CODE', 'store_code is required', status_code=422)
         if not filename:
             return error_response('MISSING_FILENAME', 'filename is required', status_code=422)
         try:
-            job = service.preview_split(store_code, filename)
+            job = service.preview_split(store_code, filename, output_mode=output_mode)
             status_code = 200 if job.status == 'completed' else 422
             return JSONResponse(job_to_dict(job), status_code=status_code)
+        except SplitOutputConflictError as exc:
+            return JSONResponse(
+                {
+                    'error': {
+                        'code': exc.code,
+                        'message': exc.message,
+                        'detail': exc.detail,
+                        'store_name': exc.store_name,
+                        'output_dir': exc.output_dir,
+                        'existing_files': exc.existing_files,
+                        'available_modes': ['overwrite', 'append'],
+                    }
+                },
+                status_code=409,
+            )
         except InvalidSplitStoreError as exc:
             return error_response(exc.code, exc.message, exc.detail, 422)
         except SplitFileNotFoundError as exc:

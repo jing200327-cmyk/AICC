@@ -14,6 +14,7 @@ TASK_TYPES = [
     {'code': 'outcall_test', 'name': '测试线索外呼'},
     {'code': 'outcall_formal', 'name': '正式线索外呼'},
     {'code': 'daily_report', 'name': '龙星行日报'},
+    {'code': 'robot_quota', 'name': '机器人用量监控'},
 ]
 
 TASK_TYPE_NAMES = {item['code']: item['name'] for item in TASK_TYPES}
@@ -66,11 +67,19 @@ class InvalidTaskDateError(TaskRecordError):
 
 
 class TaskRecordService:
-    def __init__(self, lead_service: Any, split_service: Any, outcall_service: Any, daily_report_service: Any):
+    def __init__(
+        self,
+        lead_service: Any,
+        split_service: Any,
+        outcall_service: Any,
+        daily_report_service: Any,
+        robot_quota_service: Any | None = None,
+    ):
         self.lead_service = lead_service
         self.split_service = split_service
         self.outcall_service = outcall_service
         self.daily_report_service = daily_report_service
+        self.robot_quota_service = robot_quota_service
 
     def list_records(self, task_type: str = 'all', task_date: str = '', days: int = 7) -> dict[str, Any]:
         task_type = (task_type or 'all').strip()
@@ -85,9 +94,11 @@ class TaskRecordService:
         records.extend(self._split_records())
         records.extend(self._outcall_records())
         records.extend(self._daily_report_records())
+        records.extend(self._robot_quota_records())
         records.extend(self._scan_lead_import_records())
         records.extend(self._scan_split_records())
         records.extend(self._scan_daily_report_records())
+        records.extend(self._scan_robot_quota_records())
 
         records = self._dedupe(records)
         records = [
@@ -195,6 +206,27 @@ class TaskRecordService:
             ))
         return records
 
+    def _robot_quota_records(self) -> list[TaskRecord]:
+        records = []
+        for job in getattr(self.robot_quota_service, 'jobs', {}).values():
+            output_path = str(getattr(job, 'workbook_path', '') or '')
+            records.append(TaskRecord(
+                task_id=job.job_id,
+                task_type='robot_quota',
+                task_type_name=TASK_TYPE_NAMES['robot_quota'],
+                task_name=f'{self._yyyymmdd_from_report_date(job.report_date)}机器人用量监控',
+                executor='运营专员',
+                status=job.status,
+                status_name=self._status_name(job.status),
+                input_file='龙星行日报原始话单',
+                output_files=[Path(output_path).name] if output_path else [],
+                output_paths=[output_path] if output_path else [],
+                created_at=job.created_at,
+                completed_at=job.completed_at if job.status in {'completed', 'failed'} else '',
+                error=self._dict_error(job.error),
+            ))
+        return records
+
     def _scan_lead_import_records(self) -> list[TaskRecord]:
         records = []
         input_root = Path(getattr(self.lead_service, 'input_root', ''))
@@ -296,6 +328,37 @@ class TaskRecordService:
                 input_file='main.py',
                 output_files=[path.name for path in sorted(outputs)],
                 output_paths=[str(path) for path in sorted(outputs)],
+                created_at=created_at,
+                completed_at=created_at,
+                source='filesystem',
+            ))
+        return records
+
+    def _scan_robot_quota_records(self) -> list[TaskRecord]:
+        records = []
+        if self.robot_quota_service is None:
+            return records
+        data_root = Path(getattr(self.robot_quota_service, 'output_root', '')) / 'data'
+        if not data_root.exists():
+            return records
+        for date_dir in sorted(data_root.iterdir(), reverse=True):
+            if not date_dir.is_dir() or not re.fullmatch(r'\d{6}', date_dir.name):
+                continue
+            output_path = date_dir / f'外呼机器人用量_{date_dir.name}.xlsx'
+            if not output_path.exists():
+                continue
+            created_at = datetime.fromtimestamp(output_path.stat().st_mtime).isoformat()
+            records.append(TaskRecord(
+                task_id=f'robot_quota_file:{date_dir.name}',
+                task_type='robot_quota',
+                task_type_name=TASK_TYPE_NAMES['robot_quota'],
+                task_name=f'{self._yyyymmdd_from_report_date(date_dir.name)}机器人用量监控',
+                executor='运营专员',
+                status='completed',
+                status_name=self._status_name('completed'),
+                input_file='龙星行日报原始话单',
+                output_files=[output_path.name],
+                output_paths=[str(output_path)],
                 created_at=created_at,
                 completed_at=created_at,
                 source='filesystem',

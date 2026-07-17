@@ -36,6 +36,8 @@ from lead_import.registry import StoreScriptRegistry
 from lead_import.service import LeadImportService
 from outcall.api import create_router as create_outcall_router
 from outcall.service import OutcallService
+from robot_quota.api import create_router as create_robot_quota_router
+from robot_quota.service import RobotQuotaService
 from split_import.api import create_router as create_split_router
 from split_import.service import SplitImportService
 from task_records.api import create_router as create_task_records_router
@@ -132,7 +134,23 @@ DAILY_REPORT_PROJECT_ROOT = os.environ.get(
 daily_report_service = DailyReportService(DAILY_REPORT_PROJECT_ROOT)
 app.include_router(create_daily_report_router(daily_report_service))
 
-task_record_service = TaskRecordService(lead_import_service, split_import_service, outcall_service, daily_report_service)
+ROBOT_QUOTA_ROOT = os.environ.get(
+    'AICC_ROBOT_QUOTA_ROOT',
+    os.path.join(AICC_ROOT, '机器人用量监控'),
+)
+robot_quota_service = RobotQuotaService(
+    DAILY_REPORT_PROJECT_ROOT,
+    ROBOT_QUOTA_ROOT,
+)
+app.include_router(create_robot_quota_router(robot_quota_service))
+
+task_record_service = TaskRecordService(
+    lead_import_service,
+    split_import_service,
+    outcall_service,
+    daily_report_service,
+    robot_quota_service,
+)
 app.include_router(create_task_records_router(task_record_service))
 
 config_center_service = ConfigCenterService(lead_import_service, split_import_service, OUTCALL_CONFIG_PATH, DAILY_REPORT_PROJECT_ROOT)

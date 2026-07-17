@@ -51,3 +51,5 @@ class SplitJob:
     invalid_rows: int
     created_at: str
     error: dict[str, str] | None = None
+    output_mode: str = 'overwrite'
+    all_outputs: list[SplitOutputFile] = field(default_factory=list)
