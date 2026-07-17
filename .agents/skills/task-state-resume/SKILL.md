@@ -1,55 +1,61 @@
 ---
 name: task-state-resume
-description: Safely continue an interrupted or context-compressed coding task by comparing TASK_STATE.md with live Git state and current code. Use when the user asks to continue prior work, a new session finds TASK_STATE.md, or task context was compressed. Do not use to create durable AGENTS.md rules or to write a checkpoint before pausing.
+description: 通过比较 TASK_STATE.md、当前 Git 状态和现有代码，安全继续被中断或经过上下文压缩的开发任务。当用户要求继续之前的工作、新会话发现 TASK_STATE.md，或上下文刚被压缩时使用。不要用它创建长期 AGENTS.md 规则，也不要用它在暂停前写检查点。
 ---
 
-# Task State Resume
+# 任务状态恢复
 
-Resume from evidence, never from an old summary alone. Current Git state, current code, and newly executed tests override TASK_STATE.md.
+始终基于证据恢复任务，绝不能只依赖旧摘要。当前 Git 状态、当前代码和新执行的测试结果优先于 `TASK_STATE.md`。
 
-## Reconcile State
+## 使用方式
 
-1. Locate and read every applicable root or nested AGENTS.md / AGENTS.override.md.
-2. Read root TASK_STATE.md.
-3. Collect current read-only evidence:
-   - branch and HEAD
-   - git status --short
-   - git diff --stat
-   - git diff --name-status
-   - staged diff status, including git diff --cached --stat
-4. Compare the live branch, HEAD, and changed-file sets with the checkpoint.
+- 隐式触发：用户要求继续上次任务、新会话中存在 `TASK_STATE.md`，或者上下文刚完成压缩。
+- 显式调用示例：`使用 $task-state-resume 根据 TASK_STATE.md 继续之前的实现。`
+- 预期结果：先核对快照与当前仓库状态，报告差异和下一步，再继续修改；不会盲目相信或覆盖旧状态。
 
-Treat the checkpoint as potentially stale when branch or HEAD differs. When a diff disagrees with the snapshot, use current Git state. When a file listed in the snapshot has changed, read its current relevant section before relying on the old description.
+## 核对状态
 
-## Read Progressively
+1. 定位并读取当前目录范围内所有适用的根目录或嵌套 `AGENTS.md`、`AGENTS.override.md`。
+2. 读取仓库根目录的 `TASK_STATE.md`。
+3. 收集当前只读证据：
+   - 当前分支和 HEAD
+   - `git status --short`
+   - `git diff --stat`
+   - `git diff --name-status`
+   - staged diff 状态，包括 `git diff --cached --stat`
+4. 将实时分支、HEAD 和变更文件集合与检查点进行比较。
 
-Read first:
+如果分支或 HEAD 不一致，将检查点视为可能过期。如果 diff 与快照冲突，以当前 Git 状态为准。如果快照中列出的文件已经变化，必须读取该文件当前相关部分，再使用旧描述。
 
-- files named in Resume instructions, Next action, and Changed files
-- currently changed files relevant to the goal
-- the tests and configuration directly required by the next action
+## 渐进式读取
 
-Do not scan the whole repository unless this focused evidence cannot safely establish the task boundary.
+优先读取：
 
-## Report Before Editing
+- `Resume instructions`、`Next action` 和 `Changed files` 中列出的文件
+- 当前已变化且与任务目标相关的文件
+- 执行下一步直接需要的测试和配置
 
-Before modifying code, give a short status statement covering:
+除非这些聚焦证据不足以安全确定任务边界，否则不要扫描整个仓库。
 
-- current goal
-- confirmed completed work
-- differences between checkpoint and live state
-- next action
+## 修改前报告
 
-If there is an unexplained branch switch, conflicting changes, or extensive external modification, stop before writing and report the difference. Never overwrite user changes that cannot be explained from current evidence.
+修改代码前，先给出简短状态说明，包含：
 
-## Continue and Checkpoint
+- 当前目标
+- 已确认完成的工作
+- 检查点与实时状态之间的差异
+- 下一步动作
 
-Perform only the next action supported by the reconciled state. Verify new work with appropriate commands. After an important phase, before pausing, or before context compression, invoke or follow task-state-checkpoint to refresh TASK_STATE.md.
+如果发现无法解释的分支切换、冲突变更或大量外部修改，应在写入前停止并报告差异。绝不能覆盖当前证据无法解释的用户变更。
 
-## Safety Rules
+## 继续工作并更新检查点
 
-- Prefer current Git state over an old checkpoint.
-- Prefer current source over an old summary.
-- Prefer actual test output over historical claims.
-- Do not assume a snapshot file is unchanged merely because it is listed.
-- Do not copy secrets, environment values, full diffs, or long logs into a new checkpoint.
+只执行经过状态核对后有依据的下一步操作，并用适当命令验证新工作。完成重要阶段、准备暂停或即将压缩上下文时，调用或遵循 `task-state-checkpoint` 刷新 `TASK_STATE.md`。
+
+## 安全规则
+
+- 当前 Git 状态优先于旧检查点。
+- 当前源代码优先于旧摘要。
+- 实际测试输出优先于历史声明。
+- 不得因为某个文件出现在快照中，就假定其内容没有变化。
+- 不得将秘密、环境变量值、完整 diff 或长日志复制到新的检查点。

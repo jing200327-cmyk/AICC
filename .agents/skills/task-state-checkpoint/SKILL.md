@@ -1,30 +1,36 @@
 ---
 name: task-state-checkpoint
-description: Capture a concise, evidence-backed TASK_STATE.md before context compression, handoff, thread switching, or pausing a multi-file task. Use after an important verified phase or when current implementation state could be lost. Do not use to define durable repository rules; use repository-context-bootstrap for AGENTS.md.
+description: 在上下文压缩、任务交接、切换线程或暂停多文件任务前，将当前任务保存为简洁且有证据支撑的 TASK_STATE.md。在一个重要阶段已经验证完成，或当前实现状态可能丢失时使用。不要用它定义长期仓库规则；维护 AGENTS.md 应使用 repository-context-bootstrap。
 ---
 
-# Task State Checkpoint
+# 任务状态检查点
 
-Record the live state of one unfinished task so another Codex session can resume without relying on conversation memory. TASK_STATE.md is dynamic and disposable; it is not project policy.
+记录一个尚未完成任务的实时状态，使另一个 Codex 会话无需依赖对话记忆即可继续工作。`TASK_STATE.md` 是动态且可随时重建的状态文件，不是项目规则。
 
-## Collect Live Evidence
+## 使用方式
 
-From the repository root, collect only read-only evidence:
+- 隐式触发：上下文即将压缩、准备暂停或交接任务、一个重要阶段刚完成，或者任务已经修改多个文件。
+- 显式调用示例：`使用 $task-state-checkpoint 保存当前任务状态，准备切换线程。`
+- 预期结果：在仓库根目录创建或更新 `TASK_STATE.md`，不修改、暂存、提交或清理其它工作树文件。
 
-- current date and time
-- repository root, branch, and HEAD commit
-- git status --short
-- staged, unstaged, and untracked file classification
-- git diff --stat and git diff --name-status
-- git diff --cached --stat
-- small, relevant local diffs only when needed to explain behavior
-- commands actually run during this task, their results, and current reproducible errors
+## 收集实时证据
 
-Never collect or write environment-variable values, credentials, tokens, private payloads, complete logs, or complete diffs. Do not run commands that stage, commit, reset, clean, or otherwise modify the worktree while collecting a snapshot.
+从仓库根目录仅收集只读证据：
 
-## Write TASK_STATE.md
+- 当前日期和时间
+- 仓库根目录、当前分支和 HEAD 提交
+- `git status --short`
+- staged、unstaged 和 untracked 文件分类
+- `git diff --stat` 和 `git diff --name-status`
+- `git diff --cached --stat`
+- 仅在解释行为确有必要时读取少量相关局部 diff
+- 当前任务中实际运行过的命令、执行结果和目前可复现的错误
 
-Create or atomically update root TASK_STATE.md. Replace it through a temporary file and rename so a partial snapshot is never left behind. Use this structure:
+不得收集或写入环境变量值、凭据、令牌、私有业务数据、完整日志或完整 diff。收集快照时不得运行任何会暂存、提交、重置、清理或以其它方式修改工作树的命令。
+
+## 写入 TASK_STATE.md
+
+在仓库根目录创建或原子更新 `TASK_STATE.md`。先写入临时文件，再通过重命名替换目标文件，避免留下不完整快照。使用以下固定结构：
 
 ~~~
 # Task State
@@ -63,17 +69,17 @@ Create or atomically update root TASK_STATE.md. Replace it through a temporary f
 ## Diff summary
 ~~~
 
-Keep every section concise and evidence-based:
+每个章节都应简洁并有证据支撑：
 
-- Completed contains only work actually performed and verified.
-- Changed files lists each relevant path, reason, important symbol/configuration, and completed, partial, or needs-review status.
-- Validation includes only executed commands, actual results, and failures.
-- Remaining work follows dependency order; Next action contains exactly the highest-priority actionable step.
-- Resume instructions name the first files to read and checks to run.
-- Diff summary distinguishes staged, unstaged, and untracked files; state each file's net intent and review risk without pasting full diffs.
+- `Completed` 只记录已经实际完成并验证的工作。
+- `Changed files` 列出每个相关路径、修改原因、重要符号或配置，以及“完成”“部分完成”或“待检查”状态。
+- `Validation` 只记录实际执行过的命令、真实结果和失败情况。
+- `Remaining work` 按依赖顺序排列；`Next action` 只记录一个优先级最高且可以立即执行的步骤。
+- `Resume instructions` 指明恢复时首先读取的文件和需要运行的检查。
+- `Diff summary` 区分 staged、unstaged 和 untracked 文件；说明每个文件的净变更意图和审查风险，不得粘贴完整 diff。
 
-When updating an existing checkpoint, retain still-valid decisions, remove stale temporary state, move verified work from Remaining to Completed, and reconcile every file entry with current Git state. Do not trust a previous snapshot's completion claim without current evidence.
+更新已有检查点时，保留仍然有效的决定，删除过时的临时状态，将已验证工作从 `Remaining work` 移到 `Completed`，并依据当前 Git 状态核对每个文件条目。不得只凭旧快照声称某项工作已经完成，必须以当前证据重新确认。
 
-## Boundary
+## 职责边界
 
-Do not create or rewrite AGENTS.md here. Use repository-context-bootstrap for long-lived rules. Use task-state-resume to consume this snapshot safely.
+不要在此流程中创建或重写 `AGENTS.md`。长期规则应使用 `repository-context-bootstrap`；安全消费本快照并恢复工作应使用 `task-state-resume`。

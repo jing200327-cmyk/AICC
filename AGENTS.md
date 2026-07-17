@@ -1,11 +1,11 @@
 # Repository overview
 
-AICC 运营工作台是一个内部运营平台。活动前端是仓库根目录的 aicc-frontend-demo.html；FastAPI 应用由 线索变量脚本/glm-proxy/server.py 组装并提供页面、API 和任务服务。线索导入、预分割与外呼、日报工具保留各自原有 Python 核心，通过 glm-proxy 中的适配服务接入。
+AICC 运营工作台是一个内部运营平台。活动前端是仓库根目录的 aicc-frontend-demo.html，采用原生 HTML、CSS 和 JavaScript；FastAPI 应用由 线索变量脚本/glm-proxy/server.py 组装并提供页面、API 和任务服务。线索导入、预分割与外呼、日报工具保留各自原有 Python 核心，通过 glm-proxy 中的适配服务接入。
 
 # Source-of-truth files
 
 - 线索变量脚本/glm-proxy/server.py：应用组装、路径解析、路由注册和本地页面入口。
-- aicc-frontend-demo.html：当前工作台前端。不要把 线索变量脚本/frontend 自动视为活动前端。
+- aicc-frontend-demo.html：当前工作台前端，由 server.py 直接返回。不要把 线索变量脚本/frontend 的 React/Vite 原型自动视为活动前端。
 - 线索变量脚本/glm-proxy/requirements.txt：平台后端依赖。
 - 建银-线索自动预分割与导入脚本/建银-线索自动预分割与导入脚本/config.yaml：外呼环境和租户配置，包含敏感值。
 - 龙星行报表工具_核心文件_260629/tools/recorder.py 中的 ACCOUNTS：日报账户和机器人分组配置，包含敏感值。
@@ -13,11 +13,13 @@ AICC 运营工作台是一个内部运营平台。活动前端是仓库根目录
 
 # Project structure
 
-- 线索变量脚本/glm-proxy：FastAPI 服务、五个功能适配包、SQLite、上传输出和测试。
+- 线索变量脚本/glm-proxy：FastAPI 服务、七个适配包（lead_import、split_import、outcall、daily_report、task_records、config_center、robot_quota）、SQLite、上传输出和测试。
+- 线索变量脚本/frontend：独立的 React/TypeScript/Vite 线索导入原型，不由当前 server.py 提供。
 - 线索变量脚本/线索变量脚本：线索导入的门店处理脚本。
 - 线索变量脚本/建银线索：线索导入运行数据和 TXT 输出。
 - 建银-线索自动预分割与导入脚本/建银-线索自动预分割与导入脚本：预分割模板、批次文件、外呼配置和租户处理核心。
 - 龙星行报表工具_核心文件_260629：日报抓取、处理、汇总、预览源数据和输出。
+- 机器人用量监控：每日/每周机器人通次监控运行产物和模块说明。
 - .agents/skills：仓库本地 Codex Skills。
 
 # Setup and development commands
@@ -30,19 +32,19 @@ venv\Scripts\python.exe -m pip install -r requirements.txt
 python server.py --port 18765
 ~~~
 
-start.bat 会创建 venv、安装 requirements.txt 并启动 server.py。工作台通过 http://127.0.0.1:18765/aicc-frontend-demo.html 访问；不要使用 file URL 验证依赖 API 的功能。
+start.bat 会在 venv 不存在时创建环境并安装 requirements.txt，然后启动 server.py；已有 venv 时不会自动重新安装依赖。工作台通过 http://127.0.0.1:18765/aicc-frontend-demo.html 访问；不要使用 file URL 验证依赖 API 的功能。
 
-三个核心工具各有自己的 requirements.txt。仅在直接运行对应核心工具时安装其依赖。
+预分割/外呼核心和龙星行日报核心各有自己的 requirements.txt。仅在直接运行对应核心工具时安装其依赖。React/Vite 原型使用自身 package.json 和 package-lock.json，只有任务明确修改该原型时才安装 Node 依赖。
 
 # Build, test, lint and typecheck
 
-平台没有前端构建步骤；根 HTML 由 FastAPI 直接提供。后端测试从 线索变量脚本/glm-proxy 运行：
+活动工作台没有前端构建步骤；根 HTML 由 FastAPI 直接提供。后端测试从 线索变量脚本/glm-proxy 运行：
 
 ~~~
-python -m pytest tests -q
+venv\Scripts\python.exe -m pytest tests -q
 ~~~
 
-优先运行受影响模块的测试，再在跨模块或服务装配变更后运行完整测试集。仓库当前没有统一 lint、format 或 typecheck 配置；不要虚构命令。至少对修改的 Python 文件执行语法检查，对前端脚本执行 JavaScript 语法检查并通过本地 HTTP 页面验证。
+优先运行受影响模块的测试，再在跨模块或服务装配变更后运行完整测试集。仓库根目录没有统一 lint、format 或 typecheck 配置；不要把 React/Vite 原型的 npm 命令用于活动 HTML。至少对修改的 Python 文件执行语法检查，对活动前端脚本执行 JavaScript 语法检查并通过本地 HTTP 页面验证。
 
 # Architecture and implementation conventions
 
@@ -62,7 +64,7 @@ python -m pytest tests -q
 
 # Generated files
 
-以下内容是运行产物或本地环境，不作为手工维护的源文件：venv、__pycache__、.pytest_cache、glm-proxy/storage、glm-proxy/uploads、glm-proxy/outputs、线索预分割下的日期目录、龙星行报表工具 data 下的日期和区间目录、建银线索中的任务输入输出、日志、SQLite、Excel 临时文件。
+以下内容是运行产物或本地环境，不作为手工维护的源文件：venv、__pycache__、.pytest_cache、glm-proxy/storage、glm-proxy/uploads、glm-proxy/outputs、线索预分割下的日期目录、龙星行报表工具 data 下的日期和区间目录、机器人用量监控下的 data、reports、logs 和 robot_ids.json、建银线索中的任务输入输出、日志、SQLite、Excel 临时文件。
 
 config_center/config_store.json 由配置中心服务维护；如需改变格式，应修改服务和迁移逻辑，不直接编辑运行副本。
 
@@ -81,6 +83,8 @@ config_center/config_store.json 由配置中心服务维护；如需改变格式
 - 龙星行日报：读取 龙星行报表工具_核心文件_260629/AGENTS.md。修改 glm-proxy/daily_report 或日报前端时同样适用。
 - 任务记录：读取 线索变量脚本/glm-proxy/task_records/AGENTS.md。
 - 配置中心：读取 线索变量脚本/glm-proxy/config_center/AGENTS.md。
+- 机器人用量监控：读取 机器人用量监控/AGENTS.md。修改 glm-proxy/robot_quota 或对应前端时同样适用。
+- React/Vite 原型：读取 线索变量脚本/frontend/AGENTS.md。该目录规则不适用于根 aicc-frontend-demo.html。
 
 # Documentation expectations
 
