@@ -56,8 +56,54 @@ def write_guangzhou_new_summary(root: Path, day: str, haizhu_value: int, panyu_v
     return path
 
 
+def test_all_store_summary_uses_business_column_order(tmp_path):
+    service = DailyReportService(tmp_path)
+    report_date = '260720'
+    for summary_name in [
+        '骏宜',
+        '长沙售后',
+        '广州售后',
+        '玉林新车首呼',
+        '翔鹏',
+        '南宁新车首呼',
+        '长沙',
+        '韶关',
+    ]:
+        write_summary(tmp_path, report_date, summary_name)
+    write_guangzhou_new_summary(tmp_path, report_date, haizhu_value=13, panyu_value=29)
 
-def test_grouped_mtd_status_excludes_connections_after_report_date():
+    service.generate_all_store_summary(report_date)
+
+    output_path = (
+        tmp_path
+        / 'data'
+        / report_date
+        / '汇总表'
+        / '0720全门店机器人汇总表.xlsx'
+    )
+    workbook = load_workbook(output_path, read_only=True, data_only=True)
+    try:
+        headers = [cell.value for cell in workbook.active[1]]
+    finally:
+        workbook.close()
+    assert headers == [
+        '业务场景',
+        '单位',
+        '南宁新车首呼',
+        '玉林新车首呼',
+        '广州龙星行-海珠新车首呼',
+        '广州龙星行-番禺新车首呼',
+        '骏宜',
+        '韶关',
+        '翔鹏',
+        '长沙',
+        '长沙售后',
+        '广州售后',
+    ]
+
+
+
+def test_grouped_mtd_status_uses_clue_terminal_status():
     clues = pd.DataFrame(
         {
             "线索ID": ["1", "2"],
@@ -77,12 +123,23 @@ def test_grouped_mtd_status_excludes_connections_after_report_date():
     stats = build_monthly_stats_by_group(clues, calls_to_date, "机器人")
 
     assert stats["番禺"]["累计线索量"] == 2
-    assert stats["番禺"]["累计接通量"] == 1
-    assert stats["番禺"]["累计有效线索量"] == 1
+    assert stats["番禺"]["累计接通量"] == 2
+    assert stats["番禺"]["累计有效线索量"] == 2
 def test_guangzhou_new_supplement_uses_haizhu_account():
     group = next(item for item in REPORT_PREVIEW_GROUPS if item["key"] == "guangzhou_new")
 
     assert group["stores"] == ["海珠龙星行"]
+
+
+def test_market_invitation_preview_is_after_guangzhou_new():
+    new_index = next(
+        index for index, group in enumerate(REPORT_PREVIEW_GROUPS)
+        if group['key'] == 'guangzhou_new'
+    )
+    after_sales = REPORT_PREVIEW_GROUPS[new_index + 1]
+
+    assert after_sales['key'] == 'guangzhou_after_sales'
+    assert after_sales['reports'][-1] == '广州龙星行-市场-市场活动邀约'
 
 
 def test_monthly_store_options_split_guangzhou_new_robots(tmp_path):

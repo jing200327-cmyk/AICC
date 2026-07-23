@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
 import argparse
@@ -9,6 +9,7 @@ import re
 import sys
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
+from pathlib import Path
 import pandas as pd
 
 sys.path.insert(0, os.path.dirname(__file__))
@@ -213,6 +214,19 @@ def normalize_and_mask_phones(df_xian, df_call):
 
 # ========== 通话列表去重 ==========
 
+def write_excel_artifact(frame: pd.DataFrame, target_path: str | Path) -> Path:
+    target = Path(target_path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        frame.to_excel(target, index=False, engine='openpyxl')
+        return target
+    except PermissionError:
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        fallback = target.with_name(f'{target.stem}_本次生成_{timestamp}{target.suffix}')
+        frame.to_excel(fallback, index=False, engine='openpyxl')
+        return fallback
+
+
 def deduplicate_calls(df_call, output_dir='.', company=''):
     print(f"\n【步骤1】通话列表去重")
 
@@ -224,7 +238,14 @@ def deduplicate_calls(df_call, output_dir='.', company=''):
     print(f"  原始通话记录: {original_count} 条")
     print(f"  唯一线索ID数: {unique_ids} 个")
 
-    df_call['结束时间'] = pd.to_datetime(df_call['结束时间'])
+    df_call['结束时间'] = pd.to_datetime(df_call['结束时间'], errors='coerce')
+
+    call_counts = df_call.groupby('线索ID')['线索ID'].transform('size')
+    duplicate_calls = df_call.loc[call_counts > 1].copy()
+    if not duplicate_calls.empty:
+        duplicate_calls['同线索当日话单数'] = call_counts.loc[
+            duplicate_calls.index
+        ].astype(int)
 
     df_dedup = df_call.sort_values('结束时间', ascending=False).drop_duplicates(
         subset=['线索ID'], keep='first'
@@ -233,11 +254,241 @@ def deduplicate_calls(df_call, output_dir='.', company=''):
     print(f"  去重后通话记录: {len(df_dedup)} 条")
 
     if company:
-        dedup_file = os.path.join(output_dir, f'{company}_通话列表_去重.xlsx')
-        df_dedup.to_excel(dedup_file, index=False, engine='openpyxl')
+        dedup_file = Path(output_dir) / f'{company}_通话列表_去重.xlsx'
+        written = write_excel_artifact(df_dedup, dedup_file)
         print(f"  已保存: {dedup_file}")
 
+        if not duplicate_calls.empty:
+            duplicate_file = Path(output_dir) / f'{company}_重复线索话单.xlsx'
+            write_excel_artifact(duplicate_calls, duplicate_file)
+
     return df_dedup
+
+
+def _nonempty_text(series: pd.Series) -> pd.Series:
+    return (
+        series.notna()
+        & ~series.astype(str).str.strip().str.lower().isin(
+            ['', 'nan', 'none', 'null']
+        )
+    )
+
+
+def _latest_group_mapping(
+    calls: pd.DataFrame | None,
+    group_field: str,
+) -> pd.Series:
+    if (
+        calls is None
+        or calls.empty
+        or '线索ID' not in calls.columns
+        or group_field not in calls.columns
+    ):
+        return pd.Series(dtype='object')
+
+    mapping_calls = normalize_id_column(calls, '机器人映射话单')
+    if '结束时间' in mapping_calls.columns:
+        mapping_calls = mapping_calls.copy()
+        mapping_calls['结束时间'] = pd.to_datetime(
+            mapping_calls['结束时间'], errors='coerce'
+        )
+        mapping_calls = mapping_calls.sort_values('结束时间', ascending=False)
+    mapping_calls = mapping_calls[
+        _nonempty_text(mapping_calls[group_field])
+    ].drop_duplicates('线索ID', keep='first')
+    if mapping_calls.empty:
+        return pd.Series(dtype='object')
+    return mapping_calls.set_index('线索ID')[group_field]
+
+
+def build_daily_reporting_population(
+    df_xian: pd.DataFrame,
+    df_call: pd.DataFrame,
+    filter_date: pd.Timestamp,
+    group_by_call_field: str | None = None,
+    required_group_values: list[str] | None = None,
+    df_call_mtd: pd.DataFrame | None = None,
+    unmatched_group_name: str = '未匹配机器人',
+    output_dir: str | Path | None = None,
+    company: str = '',
+) -> tuple[pd.DataFrame, pd.DataFrame, dict[str, int]]:
+    """Build one row per target-day clue, enriched with its terminal daily call."""
+    target_date = pd.Timestamp(filter_date).date()
+    clues = normalize_id_column(df_xian, '线索明细')
+    calls = normalize_id_column(df_call, '通话列表')
+
+    if '线索下发时间' in clues.columns:
+        clues = clues.copy()
+        clues['线索下发时间'] = pd.to_datetime(
+            clues['线索下发时间'], errors='coerce'
+        )
+        clues = clues[clues['线索下发时间'].dt.date == target_date]
+    clues = clues[clues['线索ID'] != ''].drop_duplicates(
+        '线索ID', keep='first'
+    ).copy()
+
+    if '结束时间' in calls.columns:
+        calls = calls.copy()
+        calls['结束时间'] = pd.to_datetime(calls['结束时间'], errors='coerce')
+        calls = calls[calls['结束时间'].dt.date == target_date]
+        calls = calls.sort_values('结束时间', ascending=False)
+    calls = calls[calls['线索ID'] != ''].drop_duplicates(
+        '线索ID', keep='first'
+    ).copy()
+
+    clue_ids = set(clues['线索ID'])
+    call_ids = set(calls['线索ID'])
+    history_calls = calls[~calls['线索ID'].isin(clue_ids)].copy()
+    daily_calls = calls[calls['线索ID'].isin(clue_ids)].copy()
+    population = clues.merge(
+        daily_calls,
+        on='线索ID',
+        how='left',
+        suffixes=('_线索', '_通话'),
+    )
+
+    if '客户意向等级' in population.columns:
+        call_intent_col = _col(population, '意向等级', prefer_call=True)
+        if call_intent_col in population.columns:
+            clue_intent = population['客户意向等级'].astype('object')
+            population['客户意向等级'] = clue_intent.where(
+                _nonempty_text(clue_intent), population[call_intent_col]
+            )
+
+    if group_by_call_field:
+        call_group_col = f'{group_by_call_field}_通话'
+        clue_group_col = f'{group_by_call_field}_线索'
+        if call_group_col in population.columns:
+            groups = population[call_group_col].astype('object')
+        elif (
+            group_by_call_field in daily_calls.columns
+            and group_by_call_field not in clues.columns
+            and group_by_call_field in population.columns
+        ):
+            groups = population[group_by_call_field].astype('object')
+        else:
+            groups = pd.Series(pd.NA, index=population.index, dtype='object')
+
+        if clue_group_col in population.columns:
+            clue_groups = population[clue_group_col]
+        elif group_by_call_field in clues.columns:
+            clue_groups = population[group_by_call_field]
+        else:
+            clue_groups = pd.Series(pd.NA, index=population.index)
+        groups = groups.where(_nonempty_text(groups), clue_groups)
+
+        historical_mapping = _latest_group_mapping(
+            df_call_mtd, group_by_call_field
+        )
+        if not historical_mapping.empty:
+            mapped = population['线索ID'].map(historical_mapping)
+            groups = groups.where(_nonempty_text(groups), mapped)
+
+        required_groups = [
+            str(value).strip()
+            for value in required_group_values or []
+            if str(value).strip()
+        ]
+        if len(required_groups) == 1:
+            groups = groups.where(_nonempty_text(groups), required_groups[0])
+        population[group_by_call_field] = groups.where(
+            _nonempty_text(groups), unmatched_group_name
+        )
+        if output_dir and company:
+            unmatched_rows = population[
+                population[group_by_call_field].astype(str).str.strip().eq(
+                    unmatched_group_name
+                )
+            ]
+            if not unmatched_rows.empty:
+                write_excel_artifact(
+                    unmatched_rows,
+                    Path(output_dir)
+                    / f'匹配结果_{company}_未匹配机器人线索表.xlsx',
+                )
+
+    diagnostics = {
+        'daily_dispatched_clues': len(clue_ids),
+        'daily_called_clues': len(call_ids),
+        'daily_dispatched_called_clues': len(clue_ids & call_ids),
+        'daily_called_historical_clues': len(call_ids - clue_ids),
+        'daily_uncalled_clues': len(clue_ids - call_ids),
+        'daily_population': len(population),
+    }
+
+    if output_dir and company:
+        output_path = Path(output_dir)
+        call_id_col = _col(population, '通话ID', prefer_call=True)
+        matched_mask = (
+            population[call_id_col].notna()
+            if call_id_col in population.columns
+            else pd.Series(False, index=population.index)
+        )
+        write_excel_artifact(
+            population[matched_mask],
+            output_path / f'匹配结果_{company}_当日线索通话记录表.xlsx',
+        )
+        write_excel_artifact(
+            population[~matched_mask],
+            output_path / f'匹配结果_{company}_无话单新增线索表.xlsx',
+        )
+        write_excel_artifact(
+            history_calls,
+            output_path / f'匹配结果_{company}_历史线索通话记录表_补充.xlsx',
+        )
+
+    return population, history_calls, diagnostics
+
+
+def count_calls_for_clue_population(
+    df_call: pd.DataFrame,
+    population: pd.DataFrame,
+) -> int:
+    if '线索ID' not in df_call.columns or '线索ID' not in population.columns:
+        return 0
+    clue_ids = set(population['线索ID'].map(normalize_id))
+    return int(df_call['线索ID'].map(normalize_id).isin(clue_ids).sum())
+
+
+def reconcile_group_population(
+    population: pd.DataFrame,
+    group_field: str,
+    required_group_values: list[str],
+    unmatched_group_name: str = '未匹配机器人',
+) -> dict[str, int]:
+    groups = population[group_field].astype(str).str.strip()
+    required = {str(value).strip() for value in required_group_values}
+    unmatched = groups.eq(unmatched_group_name) | groups.str.lower().isin(
+        ['', 'nan', 'none', 'null']
+    )
+    included = groups.isin(required)
+    return {
+        'source_total': int(len(population)),
+        'included': int(included.sum()),
+        'excluded': int((~included & ~unmatched).sum()),
+        'unmatched': int(unmatched.sum()),
+    }
+
+
+def validate_group_reconciliation(
+    reconciliation: dict[str, int],
+    company: str,
+) -> None:
+    accounted = (
+        reconciliation['included']
+        + reconciliation['excluded']
+        + reconciliation['unmatched']
+    )
+    if accounted != reconciliation['source_total']:
+        raise ValueError(
+            f'{company} 分组总量校验失败：源线索 '
+            f'{reconciliation["source_total"]}，已归类 {accounted}'
+        )
+    if reconciliation['unmatched']:
+        raise ValueError(
+            f'{company} 有 {reconciliation["unmatched"]} 条当日新增线索'
+            '无法匹配机器人，禁止生成可能偏小的分组日报'
+        )
 
 
 def parse_group_values(raw: str | None) -> list[str]:
@@ -264,6 +515,26 @@ def parse_group_display_names(raw: str | None) -> dict[str, str]:
     return result
 
 
+def build_monthly_stats(df_mtd, df_call_mtd):
+    """Build an auditable MTD snapshot from the complete month-to-date files."""
+    clues = df_mtd.drop_duplicates(subset=['线索ID'], keep='first').copy()
+    calls = df_call_mtd.copy()
+    talk_status_col = _col(clues, '通话状态')
+    clue_status_col = _col(clues, '线索状态')
+    connected_mask = clues[talk_status_col].astype(str).str.contains(
+        '已接通', na=False
+    )
+    effective_mask = clues[clue_status_col].astype(str).str.contains(
+        '有效', na=False
+    )
+    return {
+        "累计线索量": int(len(clues)),
+        "累计接通量": int(connected_mask.sum()),
+        "累计有效线索量": int(effective_mask.sum()),
+        "累计呼叫通次": int(len(calls)),
+    }
+
+
 def build_monthly_stats_by_group(
     df_mtd,
     df_call_mtd,
@@ -276,21 +547,43 @@ def build_monthly_stats_by_group(
     df_call_dedup = df_call_mtd.sort_values('结束时间', ascending=False).drop_duplicates(
         subset=['线索ID'], keep='first'
     )
+    call_group_col = '__call_group__'
     merged = df_mtd.merge(
-        df_call_dedup[['线索ID', group_by_call_field]],
+        df_call_dedup[['线索ID', group_by_call_field]].rename(
+            columns={group_by_call_field: call_group_col}
+        ),
         on='线索ID',
         how='left',
     )
     group_col = group_by_call_field
+    if group_col in merged.columns:
+        clue_group_valid = (
+            merged[group_col].notna()
+            & ~merged[group_col].astype(str).str.strip().str.lower().isin(
+                ['', 'nan', 'none', 'null']
+            )
+        )
+        merged[group_col] = merged[group_col].where(
+            clue_group_valid,
+            merged[call_group_col],
+        )
+    else:
+        merged[group_col] = merged[call_group_col]
+    merged = merged.drop(columns=[call_group_col])
     missing_group_mask = (
         merged[group_col].isna()
-        | merged[group_col].astype(str).str.strip().isin(['', 'nan'])
+        | merged[group_col].astype(str).str.strip().str.lower().isin(
+            ['', 'nan', 'none', 'null']
+        )
     )
     if missing_group_mask.any():
-        print(f"  提示：MTD中有 {int(missing_group_mask.sum())} 条线索无法通过话单匹配到{group_by_call_field}，按当前口径不纳入机器人汇总")
+        missing_count = int(missing_group_mask.sum())
+        raise ValueError(
+            f"MTD中有 {missing_count} 条线索无法通过线索或话单匹配到"
+            f"{group_by_call_field}，禁止生成不完整汇总"
+        )
     merged = merged[~missing_group_mask].copy()
 
-    talk_status_col = _col(merged, '通话状态')
     clue_status_col = _col(merged, '线索状态')
 
     stats = {}
@@ -299,19 +592,15 @@ def build_monthly_stats_by_group(
         if not group_name or group_name == 'nan':
             continue
         group_calls = df_call_mtd[df_call_mtd[group_by_call_field].astype(str).str.strip() == group_name]
-        call_status_col = _col(group_calls, '通话状态')
-        connected_ids = set(
-            group_calls.loc[
-                group_calls[call_status_col].astype(str).str.contains('已接通', na=False),
-                '线索ID',
-            ]
+        talk_status_col = _col(group_df, '通话状态')
+        connected_mask = group_df[talk_status_col].astype(str).str.contains(
+            '已接通', na=False
         )
-        connected_mask = group_df['线索ID'].isin(connected_ids)
         effective_mask = group_df[clue_status_col].astype(str).str.contains('有效', na=False)
         stats[group_name] = {
             "累计线索量": len(group_df),
             "累计接通量": int(connected_mask.sum()),
-            "累计有效线索量": int((connected_mask & effective_mask).sum()),
+            "累计有效线索量": int(effective_mask.sum()),
             "累计呼叫通次": int(len(group_calls)),
         }
     return stats
@@ -508,6 +797,16 @@ def match_records(df_xian, df_call, output_dir='.', company=''):
 
 # ========== 报告生成 ==========
 
+def normalize_unconnected_reason(value) -> str:
+    if pd.isna(value) or str(value).strip().lower() in {
+        '', 'nan', 'none', 'null'
+    }:
+        return '无话单/未外呼'
+    if '线路限制' in str(value):
+        return '线路限制'
+    return str(value).strip()
+
+
 def generate_report(df_today, df_history, company='', date='', phone_warning='', invalid_phone_count=0, total_xiansuo=0):
     df_today = df_today.copy()
 
@@ -609,9 +908,9 @@ def generate_report(df_today, df_history, company='', date='', phone_warning='',
     print()
 
     weijietong_copy = weijietong.copy()
-    weijietong_copy['通话状态_合并'] = weijietong_copy[call_status_col].apply(
-        lambda x: '线路限制' if pd.notna(x) and '线路限制' in str(x) else str(x)
-    )
+    weijietong_copy['通话状态_合并'] = weijietong_copy[
+        call_status_col
+    ].apply(normalize_unconnected_reason)
 
     print(f"未接通原因TOP3：")
     status_counts = weijietong_copy['通话状态_合并'].value_counts()
@@ -721,9 +1020,9 @@ def generate_guangzhou_lxh_report(df_today, company='', date='', total_xiansuo=0
     print()
 
     weijietong_copy = weijietong.copy()
-    weijietong_copy['通话状态_合并'] = weijietong_copy[call_status_col].apply(
-        lambda x: '线路限制' if pd.notna(x) and '线路限制' in str(x) else str(x)
-    )
+    weijietong_copy['通话状态_合并'] = weijietong_copy[
+        call_status_col
+    ].apply(normalize_unconnected_reason)
 
     print(f"未接通原因TOP3：")
     status_counts = weijietong_copy['通话状态_合并'].value_counts()
@@ -921,16 +1220,13 @@ def main():
     filter_date = pd.to_datetime(date_str, format='%y%m%d')
     mtd_start_date = pd.to_datetime(args.mtd_start_date, format='%y%m%d') if args.mtd_start_date else None
     df_call['结束时间'] = pd.to_datetime(df_call['结束时间'], errors='coerce')
-    call_mtd_mask = df_call['结束时间'].dt.date <= filter_date.date()
-    if mtd_start_date is not None:
-        call_mtd_mask &= df_call['结束时间'].dt.date >= mtd_start_date.date()
-    df_call_mtd = df_call[call_mtd_mask].copy()
+    # 日报指标只使用目标日话单；机器人归属允许使用完整月度快照。
+    # 历史补跑时，线索可能在下发日没有通话、之后才首次呼叫，若把映射
+    # 话单截断到目标日会导致多机器人日报静默漏数。
+    df_call_mapping = df_call.copy()
 
-    # 全月话单中截止至 date 的呼叫通次（用于 MTD）
-    # 例如用 17 号的文件处理 16 号数据时，只统计月初～16 号的呼叫，而非全表
-    mtd_call_count = int(df_call_mtd.shape[0])
     if mtd_start_date is not None:
-        print(f"\nMTD 起始日期: {mtd_start_date.date()}")
+        print(f"\n机器人历史映射起始日期: {mtd_start_date.date()}")
 
     print(f"\n按日期筛选通话列表：结束时间 == {filter_date.date()}")
     before = len(df_call)
@@ -952,38 +1248,52 @@ def main():
         # 提前转换时间列
         df_xian['线索下发时间'] = pd.to_datetime(df_xian['线索下发时间'], errors='coerce')
 
-        # 截止至指定日期的线索，用于 MTD 计算
-        # 例如用 17 号的文件处理 16 号数据时，只统计月初～16 号的线索，而非全表
-        clue_mtd_mask = df_xian['线索下发时间'].dt.date <= filter_date.date()
-        if mtd_start_date is not None:
-            clue_mtd_mask &= df_xian['线索下发时间'].dt.date >= mtd_start_date.date()
-        df_mtd = df_xian[clue_mtd_mask]
-        talk_status_col = _col(df_mtd, '通话状态')
-        clue_status_col = _col(df_mtd, '线索状态')
-        monthly_stats = {
-            "累计线索量": len(df_mtd),
-            "累计接通量": int(df_mtd[talk_status_col].astype(str).str.contains('已接通', na=False).sum()),
-            "累计有效线索量": int(df_mtd[clue_status_col].astype(str).str.contains('有效', na=False).sum()),
-            "累计呼叫通次": mtd_call_count,
-        }
+        mtd_begin = (
+            mtd_start_date
+            if mtd_start_date is not None
+            else filter_date.replace(day=1)
+        )
+        df_xian_mtd = df_xian[
+            (df_xian['线索下发时间'].dt.date >= mtd_begin.date())
+            & (df_xian['线索下发时间'].dt.date <= filter_date.date())
+        ].drop_duplicates(subset=['线索ID'], keep='first').copy()
+        df_call_mtd = df_call_mapping[
+            (df_call_mapping['结束时间'].dt.date >= mtd_begin.date())
+            & (df_call_mapping['结束时间'].dt.date <= filter_date.date())
+        ].copy()
+        monthly_stats = build_monthly_stats(df_xian_mtd, df_call_mtd)
         monthly_stats_by_group = {}
         if args.group_by_call_field:
             monthly_stats_by_group = build_monthly_stats_by_group(
-                df_mtd,
+                df_xian_mtd,
                 df_call_mtd,
                 args.group_by_call_field,
                 unmatched_group_name=args.unmatched_group_name,
             )
+            empty_mtd_stats = {
+                '累计线索量': 0,
+                '累计接通量': 0,
+                '累计有效线索量': 0,
+                '累计呼叫通次': 0,
+            }
+            for group_name in required_group_values:
+                monthly_stats_by_group.setdefault(
+                    group_name,
+                    dict(empty_mtd_stats),
+                )
+        print(
+            "\nMTD完整快照: "
+            f"线索 {monthly_stats['累计线索量']}，"
+            f"接通 {monthly_stats['累计接通量']}，"
+            f"有效 {monthly_stats['累计有效线索量']}，"
+            f"呼叫通次 {monthly_stats['累计呼叫通次']}"
+        )
 
         print(f"\n按日期筛选线索明细：线索下发时间 == {filter_date.date()}")
         before = len(df_xian)
         df_xian = df_xian[df_xian['线索下发时间'].dt.date == filter_date.date()]
         print(f"  筛选前: {before} 条，筛选后: {len(df_xian)} 条")
         df_xian = limit_clue_records_for_matching(df_xian, args.clue_match_limit)
-
-        # 当日呼叫通次：仅统计属于当日新线索的呼叫（排除对前几天线索的重呼）
-        today_clue_ids = set(df_xian['线索ID'].unique())
-        call_count_total = int(df_call[df_call['线索ID'].isin(today_clue_ids)].shape[0])
 
         df_xian, df_call_dedup = normalize_and_mask_phones(df_xian, df_call_dedup)
 
@@ -993,7 +1303,25 @@ def main():
         phone_warning = phone_warning_xian + phone_warning_call
         invalid_phone_count = invalid_xian_count
 
-        df_today, df_history = match_records(df_xian, df_call_dedup, intermediate_dir, args.company)
+        df_today, df_history, daily_diagnostics = build_daily_reporting_population(
+            df_xian,
+            df_call_dedup,
+            filter_date,
+            group_by_call_field=args.group_by_call_field,
+            required_group_values=required_group_values,
+            df_call_mtd=df_call_mapping,
+            unmatched_group_name=args.unmatched_group_name,
+            output_dir=intermediate_dir,
+            company=args.company,
+        )
+        call_count_total = count_calls_for_clue_population(df_call, df_today)
+        print(
+            "  当日口径校验: "
+            f"新增 {daily_diagnostics['daily_dispatched_clues']}，"
+            f"有话单 {daily_diagnostics['daily_dispatched_called_clues']}，"
+            f"无话单 {daily_diagnostics['daily_uncalled_clues']}，"
+            f"历史重呼 {daily_diagnostics['daily_called_historical_clues']}"
+        )
 
         if args.group_by_call_field:
             group_col = _col(df_today, args.group_by_call_field, prefer_call=True)
@@ -1008,6 +1336,20 @@ def main():
                 groups = groups & set(required_group_values)
                 groups |= set(required_group_values)
             groups = sorted(groups)
+            reconciliation = reconcile_group_population(
+                df_today,
+                group_col,
+                required_group_values,
+                unmatched_group_name=args.unmatched_group_name,
+            )
+            print(
+                "  分组口径校验: "
+                f"源线索 {reconciliation['source_total']}，"
+                f"纳入配置机器人 {reconciliation['included']}，"
+                f"明确排除 {reconciliation['excluded']}，"
+                f"未匹配 {reconciliation['unmatched']}"
+            )
+            validate_group_reconciliation(reconciliation, args.company)
             print(f"\n按 {args.group_by_call_field} 分组统计: {', '.join(groups) if groups else '无'}")
             combined_summary_items = []
             grouped_artifact_names = []
@@ -1087,7 +1429,7 @@ def main():
                 company=args.company, date=args.date,
                 phone_warning=phone_warning,
                 invalid_phone_count=invalid_phone_count,
-                total_xiansuo=len(df_xian)
+                total_xiansuo=len(df_today)
             )
 
             if report_data:

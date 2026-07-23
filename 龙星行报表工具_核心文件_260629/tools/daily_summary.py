@@ -1,8 +1,10 @@
 # -*- coding: utf-8 -*-
 import json
+import os
+import re
 from datetime import datetime, timedelta
 from pathlib import Path
-from openpyxl import Workbook
+from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 
 HEADER_FILL = PatternFill(start_color="4E83FD", end_color="4E83FD", fill_type="solid")
@@ -17,7 +19,17 @@ THIN_BORDER = Border(
     top=Side(style='thin'), bottom=Side(style='thin'),
 )
 
-TRACKING_DIR = Path(__file__).parent.parent / "_tracking"
+TRACKING_DIR = Path(
+    os.environ.get('REPORT_TRACKING_DIR')
+    or Path(__file__).parent.parent / '_tracking'
+)
+MTD_BACKFILL_KEY = "_mtd_backfill"
+MTD_SNAPSHOT_FIELDS = {
+    '累计线索量': 'MTD累计线索量',
+    '累计接通量': 'MTD累计接通量',
+    '累计有效线索量': 'MTD累计有效线索量',
+    '累计呼叫通次': 'MTD累计呼叫通次',
+}
 
 
 def _safe_div(a, b):
@@ -67,6 +79,429 @@ def _load_previous_tracking(company: str, date: str, aliases: list[str] | None =
     return prev_tracking.get(prev_date, {})
 
 
+def _tracking_metric(record: dict, key: str) -> int:
+    value = record.get(key, 0)
+    try:
+        return int(float(value or 0))
+    except (TypeError, ValueError):
+        return 0
+
+
+def aggregate_tracking_mtd(
+    tracking: dict,
+    report_date: str,
+) -> tuple[dict[str, int], list[str]]:
+    """Aggregate calendar-month MTD metrics from daily tracking records."""
+    report_dt = datetime.strptime(report_date, '%y%m%d')
+    month_start = report_dt.replace(day=1)
+    records = {
+        key: value
+        for key, value in tracking.items()
+        if isinstance(value, dict)
+        and len(key) == 6
+        and key.isdigit()
+        and key[:4] == report_date[:4]
+        and key <= report_date
+    }
+    expected_dates = []
+    current = month_start
+    while current <= report_dt:
+        expected_dates.append(current.strftime('%y%m%d'))
+        current += timedelta(days=1)
+    totals = {
+        '累计线索量': sum(
+            _tracking_metric(item, '新增线索量') for item in records.values()
+        ),
+        '累计接通量': sum(
+            _tracking_metric(item, '新增线索接通量') for item in records.values()
+        ),
+        '累计有效线索量': sum(
+            _tracking_metric(item, '有效线索量') for item in records.values()
+        ),
+        '累计呼叫通次': sum(
+            _tracking_metric(item, '呼叫通次') for item in records.values()
+        ),
+    }
+
+    report_record = records.get(report_date, {})
+    has_snapshot = all(
+        field in report_record for field in MTD_SNAPSHOT_FIELDS.values()
+    )
+    if has_snapshot:
+        totals = {
+            metric: _tracking_metric(report_record, field)
+            for metric, field in MTD_SNAPSHOT_FIELDS.items()
+        }
+
+    covered_dates = set()
+    for adjustment in tracking.get(MTD_BACKFILL_KEY, {}).values():
+        if not isinstance(adjustment, dict):
+            continue
+        adjustment_dates = adjustment.get('covered_dates') or []
+        if not adjustment_dates or not all(
+            isinstance(key, str)
+            and len(key) == 6
+            and key.isdigit()
+            and key[:4] == report_date[:4]
+            and key <= report_date
+            for key in adjustment_dates
+        ):
+            continue
+        covered_dates.update(adjustment_dates)
+        if has_snapshot:
+            continue
+        totals['累计线索量'] += _tracking_metric(adjustment, '新增线索量')
+        totals['累计接通量'] += _tracking_metric(
+            adjustment, '新增线索接通量'
+        )
+        totals['累计有效线索量'] += _tracking_metric(
+            adjustment, '有效线索量'
+        )
+        totals['累计呼叫通次'] += _tracking_metric(adjustment, '呼叫通次')
+
+    missing_dates = [
+        key
+        for key in expected_dates
+        if key not in records and key not in covered_dates
+    ]
+    return totals, missing_dates
+
+
+def _tracking_record(data: dict, monthly_stats: dict | None = None) -> dict:
+    record = {
+        "呼叫通次": data.get("call_count", 0),
+        "新增线索量": data.get("total", 0),
+        "新增线索接通量": data.get("jietong_count", 0),
+        "有效线索量": data.get("yixiang_count", 0),
+        "已接通通话平均时长分钟": data.get(
+            "connected_avg_duration_minutes", 0
+        ),
+    }
+    for metric, field in MTD_SNAPSHOT_FIELDS.items():
+        if monthly_stats and metric in monthly_stats:
+            record[field] = _tracking_metric(monthly_stats, metric)
+    return record
+
+
+def _summary_candidates(report_date: str) -> list[Path]:
+    data_root = TRACKING_DIR.parent / 'data'
+    direct_dir = data_root / report_date / '汇总表'
+    candidates = list(direct_dir.glob(f'*_{report_date}.xlsx'))
+    if not data_root.exists():
+        return candidates
+
+    for period_dir in data_root.glob(f'{report_date[:4]}*_*'):
+        parts = period_dir.name.split('_', 1)
+        if len(parts) != 2 or not (parts[0] <= report_date <= parts[1]):
+            continue
+        candidates.extend(period_dir.rglob(f'*_{report_date}.xlsx'))
+    return list(dict.fromkeys(candidates))
+
+
+def _percentage_points(value) -> float | None:
+    if value is None or value == '':
+        return None
+    if isinstance(value, str):
+        text = value.strip().rstrip('%')
+        try:
+            return float(text)
+        except ValueError:
+            return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _effective_count_from_report(
+    report_date: str,
+    company_names: list[str],
+) -> int | None:
+    report_dir = TRACKING_DIR.parent / 'data' / report_date / '每日报告'
+    for company in company_names:
+        path = report_dir / f'{company}_每日报告_{report_date}.txt'
+        if not path.exists():
+            continue
+        text = path.read_text(encoding='utf-8', errors='replace')
+        match = re.search(r'意向线索[（(]\s*(\d+)\s*条', text)
+        if match:
+            return int(match.group(1))
+    return None
+
+
+def _tracking_record_from_summary(
+    path: Path,
+    report_date: str,
+    company_names: list[str],
+) -> dict | None:
+    workbook = load_workbook(path, data_only=True, read_only=True)
+    try:
+        sheet = workbook.active
+        header = [cell.value for cell in sheet[1]]
+        column_index = next(
+            (
+                index
+                for index, value in enumerate(header)
+                if str(value or '').strip() in company_names
+            ),
+            None,
+        )
+        if column_index is None:
+            return None
+
+        values = {}
+        in_daily_section = False
+        for row in sheet.iter_rows(values_only=True):
+            label = str(row[0] or '').strip()
+            if label.startswith('Daily Report'):
+                in_daily_section = True
+                continue
+            if not in_daily_section:
+                continue
+            if column_index >= len(row):
+                continue
+            if label in {
+                '新增线索量',
+                '新增线索接通量',
+                '新增线索呼叫通次',
+                '已接通通话平均时长（向上取整）',
+            }:
+                values[label] = row[column_index]
+            elif label.startswith('接通有效率'):
+                values['接通有效率'] = row[column_index]
+
+        required = {'新增线索量', '新增线索接通量', '新增线索呼叫通次'}
+        if not required.issubset(values):
+            return None
+
+        effective = _effective_count_from_report(report_date, company_names)
+        if effective is None:
+            rate = _percentage_points(values.get('接通有效率'))
+            connected = _tracking_metric(values, '新增线索接通量')
+            effective = round(connected * rate / 100) if rate is not None else 0
+        return {
+            '呼叫通次': _tracking_metric(values, '新增线索呼叫通次'),
+            '新增线索量': _tracking_metric(values, '新增线索量'),
+            '新增线索接通量': _tracking_metric(values, '新增线索接通量'),
+            '有效线索量': int(effective),
+            '已接通通话平均时长分钟': _tracking_metric(
+                values,
+                '已接通通话平均时长（向上取整）',
+            ),
+        }
+    finally:
+        workbook.close()
+
+
+def _mtd_record_from_summary(
+    path: Path,
+    company_names: list[str],
+) -> dict | None:
+    workbook = load_workbook(path, data_only=True, read_only=True)
+    try:
+        sheet = workbook.active
+        header = [cell.value for cell in sheet[1]]
+        column_index = next(
+            (
+                index
+                for index, value in enumerate(header)
+                if str(value or '').strip() in company_names
+            ),
+            None,
+        )
+        if column_index is None:
+            return None
+
+        labels = {
+            '累计线索量': '新增线索量',
+            '接通量': '新增线索接通量',
+            '有效线索量': '有效线索量',
+            '呼叫通次': '呼叫通次',
+        }
+        values = {}
+        for row in sheet.iter_rows(values_only=True):
+            label = str(row[0] or '').strip()
+            if label.startswith('Daily Report'):
+                break
+            target = labels.get(label)
+            if target and column_index < len(row):
+                values[target] = row[column_index]
+        if not set(labels.values()).issubset(values):
+            return None
+        return {
+            key: _tracking_metric(values, key)
+            for key in labels.values()
+        }
+    finally:
+        workbook.close()
+
+
+def _tracking_source_label(path: Path) -> str:
+    try:
+        return str(path.relative_to(TRACKING_DIR.parent))
+    except ValueError:
+        return str(path)
+
+
+def backfill_tracking_mtd_gaps_from_summaries(
+    company: str,
+    report_date: str,
+    tracking: dict,
+    aliases: list[str] | None = None,
+) -> tuple[list[str], list[str]]:
+    """Backfill unresolved MTD gaps from the earliest later MTD snapshot.
+
+    Consecutive days without their own daily report cannot be split reliably.
+    Store the verified aggregate delta with provenance instead of inventing a
+    per-day distribution.
+    """
+    tracking.pop(MTD_BACKFILL_KEY, None)
+    tracking_dates = [
+        key
+        for key, value in tracking.items()
+        if isinstance(value, dict)
+        and len(key) == 6
+        and key.isdigit()
+        and key[:4] == report_date[:4]
+    ]
+    backfill_date = max([report_date, *tracking_dates])
+    _, unresolved = aggregate_tracking_mtd(tracking, backfill_date)
+    if not unresolved:
+        return [], []
+
+    company_names = [company] + [
+        alias for alias in aliases or [] if alias and alias != company
+    ]
+    remaining = set(unresolved)
+    adjustments = {}
+    report_dt = datetime.strptime(backfill_date, '%y%m%d')
+
+    while remaining:
+        first_missing = min(remaining)
+        anchor_dt = datetime.strptime(first_missing, '%y%m%d')
+        anchor_record = None
+        anchor_path = None
+        anchor_date = None
+        while anchor_dt <= report_dt:
+            candidate_date = anchor_dt.strftime('%y%m%d')
+            for path in _summary_candidates(candidate_date):
+                record = _mtd_record_from_summary(path, company_names)
+                if record is not None:
+                    anchor_record = record
+                    anchor_path = path
+                    anchor_date = candidate_date
+                    break
+            if anchor_record is not None:
+                break
+            anchor_dt += timedelta(days=1)
+
+        if anchor_record is None or anchor_date is None or anchor_path is None:
+            break
+
+        covered_dates = sorted(key for key in remaining if key <= anchor_date)
+        known, _ = aggregate_tracking_mtd(tracking, anchor_date)
+        residual = {
+            '新增线索量': (
+                anchor_record['新增线索量'] - known['累计线索量']
+            ),
+            '新增线索接通量': (
+                anchor_record['新增线索接通量'] - known['累计接通量']
+            ),
+            '有效线索量': (
+                anchor_record['有效线索量'] - known['累计有效线索量']
+            ),
+            '呼叫通次': (
+                anchor_record['呼叫通次'] - known['累计呼叫通次']
+            ),
+        }
+        if any(value < 0 for value in residual.values()):
+            print(
+                f'  MTD tracking缺口无法回填: {company} {first_missing}，'
+                f'锚点汇总小于现有tracking累计 ({anchor_path.name})'
+            )
+            break
+
+        key = (
+            covered_dates[0]
+            if len(covered_dates) == 1
+            else f'{covered_dates[0]}-{covered_dates[-1]}'
+        )
+        adjustments[key] = {
+            **residual,
+            'covered_dates': covered_dates,
+            'source': _tracking_source_label(anchor_path),
+            'source_mtd_date': anchor_date,
+            'method': 'existing_summary_mtd_delta',
+        }
+        tracking[MTD_BACKFILL_KEY] = adjustments
+        remaining.difference_update(covered_dates)
+        print(
+            f'  MTD tracking区间回填: {company} {key}，'
+            f'新增线索 {residual["新增线索量"]} 条，'
+            f'依据 {anchor_path.name}'
+        )
+
+    _, unresolved = aggregate_tracking_mtd(tracking, backfill_date)
+    return (
+        list(adjustments),
+        [key for key in unresolved if key <= report_date],
+    )
+
+
+def backfill_tracking_from_daily_reports(
+    company: str,
+    report_date: str,
+    tracking: dict,
+    aliases: list[str] | None = None,
+) -> tuple[list[str], list[str]]:
+    tracking_without_adjustments = dict(tracking)
+    tracking_without_adjustments.pop(MTD_BACKFILL_KEY, None)
+    _, missing_dates = aggregate_tracking_mtd(
+        tracking_without_adjustments,
+        report_date,
+    )
+    company_names = [company] + [
+        alias for alias in aliases or [] if alias and alias != company
+    ]
+    backfilled = []
+    for missing_date in missing_dates:
+        record = None
+        for path in _summary_candidates(missing_date):
+            record = _tracking_record_from_summary(
+                path,
+                missing_date,
+                company_names,
+            )
+            if record is not None:
+                break
+        if record is None:
+            continue
+        tracking[missing_date] = record
+        backfilled.append(missing_date)
+        print(
+            f'  MTD tracking回填: {company} {missing_date} '
+            f'新增线索 {record["新增线索量"]} 条'
+        )
+
+    _, unresolved = aggregate_tracking_mtd(tracking, report_date)
+    return backfilled, unresolved
+
+
+def _print_tracking_mtd_status(
+    company: str,
+    report_date: str,
+    missing_dates: list[str],
+) -> None:
+    tracking_path = TRACKING_DIR / report_date[:4] / f'{company}.json'
+    print(f'  MTD tracking累计: {tracking_path}')
+    if missing_dates:
+        print(
+            '  MTD tracking缺失日期: '
+            + '、'.join(missing_dates)
+            + '；缺失日期不会被自动按0伪造，请补齐tracking后重跑。'
+        )
+
+
 def generate_daily_summary(company: str, date: str, data: dict, output_dir: str | Path,
                            monthly_stats: dict | None = None) -> Path:
     out_dir = Path(output_dir)
@@ -76,26 +511,25 @@ def generate_daily_summary(company: str, date: str, data: dict, output_dir: str 
 
     # === Tracking ===
     tracking = _load_tracking(company, year_month)
-    tracking[date] = {
-        "呼叫通次": data.get("call_count", 0),
-        "新增线索量": data.get("total", 0),
-        "新增线索接通量": data.get("jietong_count", 0),
-        "有效线索量": data.get("yixiang_count", 0),
-        "已接通通话平均时长分钟": data.get("connected_avg_duration_minutes", 0),
-    }
+    tracking[date] = _tracking_record(data, monthly_stats)
+    backfill_tracking_from_daily_reports(
+        company,
+        date,
+        tracking,
+    )
+    _, missing_dates = backfill_tracking_mtd_gaps_from_summaries(
+        company,
+        date,
+        tracking,
+    )
     _save_tracking(company, year_month, tracking)
 
-    # MTD 指标 = 来自当日下载的全月线索/话单表
-    if monthly_stats:
-        mtd_total = monthly_stats.get("累计线索量", 0)
-        mtd_jietong = monthly_stats.get("累计接通量", 0)
-        mtd_yixiang = monthly_stats.get("累计有效线索量", 0)
-        mtd_call_count = monthly_stats.get("累计呼叫通次", 0)
-    else:
-        mtd_total = data.get("total", 0)
-        mtd_jietong = data.get("jietong_count", 0)
-        mtd_yixiang = data.get("yixiang_count", 0)
-        mtd_call_count = 0
+    mtd_stats, _ = aggregate_tracking_mtd(tracking, date)
+    _print_tracking_mtd_status(company, date, missing_dates)
+    mtd_total = mtd_stats['累计线索量']
+    mtd_jietong = mtd_stats['累计接通量']
+    mtd_yixiang = mtd_stats['累计有效线索量']
+    mtd_call_count = mtd_stats['累计呼叫通次']
 
     # 昨日对比数据：月初时需要从上月 tracking 文件读取前一天。
     yesterday = _load_previous_tracking(company, date)
@@ -225,25 +659,35 @@ def generate_multi_daily_summary(title: str, date: str, grouped_data: list[dict]
         company = item["company"]
         tracking_company = item.get("tracking_company", company)
         data = item["data"]
-        monthly_stats = item.get("monthly_stats") or {}
-
         tracking_aliases = item.get("tracking_aliases") or []
         tracking = _load_tracking_with_aliases(tracking_company, year_month, tracking_aliases)
-        tracking[date] = {
-            "呼叫通次": data.get("call_count", 0),
-            "新增线索量": data.get("total", 0),
-            "新增线索接通量": data.get("jietong_count", 0),
-            "有效线索量": data.get("yixiang_count", 0),
-            "已接通通话平均时长分钟": data.get("connected_avg_duration_minutes", 0),
-        }
+        tracking[date] = _tracking_record(
+            data,
+            item.get("monthly_stats") or {},
+        )
+        backfill_tracking_from_daily_reports(
+            tracking_company,
+            date,
+            tracking,
+            aliases=tracking_aliases,
+        )
+        _, missing_dates = backfill_tracking_mtd_gaps_from_summaries(
+            tracking_company,
+            date,
+            tracking,
+            aliases=tracking_aliases,
+        )
         _save_tracking(tracking_company, year_month, tracking)
+
+        mtd_stats, _ = aggregate_tracking_mtd(tracking, date)
+        _print_tracking_mtd_status(tracking_company, date, missing_dates)
 
         yesterday = _load_previous_tracking(tracking_company, date, tracking_aliases)
 
-        mtd_total = monthly_stats.get("累计线索量", data.get("total", 0))
-        mtd_jietong = monthly_stats.get("累计接通量", data.get("jietong_count", 0))
-        mtd_yixiang = monthly_stats.get("累计有效线索量", data.get("yixiang_count", 0))
-        mtd_call_count = monthly_stats.get("累计呼叫通次", 0)
+        mtd_total = mtd_stats['累计线索量']
+        mtd_jietong = mtd_stats['累计接通量']
+        mtd_yixiang = mtd_stats['累计有效线索量']
+        mtd_call_count = mtd_stats['累计呼叫通次']
 
         today_total = data.get("total", 0)
         today_jietong = data.get("jietong_count", 0)
