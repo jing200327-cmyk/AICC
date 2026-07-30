@@ -7,6 +7,12 @@
   <strong>龙星行日报</strong> · <strong>机器人用量监控</strong> · <strong>任务记录</strong> · <strong>配置中心</strong>
 </p>
 
+<p align=center>
+  <a href=AICC运营工作台_PRD.md><strong>产品需求文档 PRD</strong></a> ·
+  <a href=#系统设计><strong>系统设计</strong></a> ·
+  <a href=#快速开始><strong>本地运行</strong></a>
+</p>
+
 ![AICC 运营工作台](pictures/AICC运营工作台.png)
 
 ## 个人作品
@@ -145,7 +151,7 @@ AICC 运营工作台将已有 Python 运营脚本通过 FastAPI 适配层服务�
 
 ### 3. 龙星行日报
 
-日报模块当前覆盖 9 家 4S 门店租户和 11 个机器人，支持生成今日或指定日期日报。页面按门店展示日报与汇总表，并支持复制完整表格截图。
+日报模块按账户和机器人配置动态扩展，支持生成今日或指定日期日报。页面按门店展示日报与汇总表，并支持复制完整表格截图。
 
 ![龙星行日报任务](pictures/龙星行日报1.png)
 
@@ -317,3 +323,7 @@ cd 线索变量脚本\glm-proxy
 - 后端入口是 <code>线索变量脚本/glm-proxy/server.py</code>。
 - 新功能优先通过适配层接入，除非需求明确，不直接重构原有核心脚本。
 - 文件名、门店名、批次名和任务类型是前后端契约，修改时需同步检查 API、页面与任务记录。
+
+## 作者
+
+个人作品与持续维护：[@jing200327-cmyk](https://github.com/jing200327-cmyk)
