@@ -9,8 +9,7 @@
 
 <p align=center>
   <a href=AICC运营工作台_PRD.md><strong>产品需求文档 PRD</strong></a> ·
-  <a href=#系统设计><strong>系统设计</strong></a> ·
-  <a href=#快速开始><strong>本地运行</strong></a>
+  <a href=#系统设计><strong>系统设计</strong></a>
 </p>
 
 ![AICC 运营工作台](pictures/AICC运营工作台.png)
@@ -214,16 +213,6 @@ AICC 运营工作台将已有 Python 运营脚本通过 FastAPI 适配层服务�
 | 状态存储 | SQLite 保存外呼任务恢复状态；文件系统保存上传、输出和日志 |
 | 外部系统 | AICC 测试/生产平台接口 |
 
-### 运行数据目录
-
-~~~text
-线索变量脚本/glm-proxy/storage/
-├── uploads/       # 上传文件
-├── outputs/       # 输出文件
-├── logs/          # 运行日志
-└── aicc.sqlite3   # 任务与恢复状态
-~~~
-
 ## 项目结构
 
 ~~~text
@@ -237,42 +226,6 @@ AICC/
 ├── 建银-线索自动预分割与导入脚本/
 │   └── 建银-线索自动预分割与导入脚本/      # 分割、外呼配置与租户处理核心
 └── 龙星行报表工具_核心文件_260629/          # 日报抓取、处理与汇总工具
-~~~
-
-## 快速开始
-
-### 环境要求
-
-- Windows
-- Python 3.10 或更高版本
-- 可访问所配置的 AICC 平台
-
-### 1. 创建环境并安装依赖
-
-~~~powershell
-cd 线索变量脚本\glm-proxy
-python -m venv venv
-.\venv\Scripts\python.exe -m pip install -r requirements.txt
-~~~
-
-### 2. 启动后端
-
-~~~powershell
-.\venv\Scripts\python.exe server.py --port 18765
-~~~
-
-也可以在 <code>线索变量脚本\glm-proxy</code> 中运行 <code>start.bat</code>。
-
-### 3. 打开工作台
-
-~~~text
-http://127.0.0.1:18765/aicc-frontend-demo.html
-~~~
-
-依赖 API 的功能不能通过 <code>file:///</code> 地址使用。FastAPI 接口文档位于：
-
-~~~text
-http://127.0.0.1:18765/docs
 ~~~
 
 ## 配置说明
@@ -298,16 +251,11 @@ http://127.0.0.1:18765/docs
 
 ## 验证与测试
 
-~~~powershell
-cd 线索变量脚本\glm-proxy
-.\venv\Scripts\python.exe -m pytest tests -q
-~~~
-
 提交变更前至少完成以下检查：
 
 1. 对修改的 Python 文件执行语法检查。
 2. 运行受影响模块测试；跨模块变更运行完整测试集。
-3. 通过本地 HTTP 服务打开工作台，检查浏览器控制台和相关 API 请求。
+3. 在目标环境打开工作台，检查浏览器控制台和相关 API 请求。
 4. 外呼自动化测试使用临时目录和伪平台服务，不直接调用生产平台。
 
 ## 数据与安全
