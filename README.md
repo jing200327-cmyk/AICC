@@ -12,7 +12,7 @@
   <a href=#系统设计><strong>系统设计</strong></a>
 </p>
 
-![AICC 运营工作台](pictures/AICC运营工作台.png)
+![AICC 运营工作台登录页](pictures/AICC运营工作台登录页.png)
 
 ## 个人作品
 

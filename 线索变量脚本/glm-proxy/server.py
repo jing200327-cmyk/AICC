@@ -12,6 +12,7 @@ Usage:  python server.py
 import argparse
 import json
 import logging
+import mimetypes
 import os
 import re
 import sys
@@ -25,6 +26,7 @@ import httpx
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 
 from config_center.api import create_router as create_config_center_router
 from config_center.service import ConfigCenterService
@@ -155,6 +157,10 @@ app.include_router(create_task_records_router(task_record_service))
 
 config_center_service = ConfigCenterService(lead_import_service, split_import_service, OUTCALL_CONFIG_PATH, DAILY_REPORT_PROJECT_ROOT)
 app.include_router(create_config_center_router(config_center_service))
+
+AICC_ASSETS_ROOT = os.path.join(AICC_ROOT, "assets")
+mimetypes.add_type("text/javascript", ".js")
+app.mount("/assets", StaticFiles(directory=AICC_ASSETS_ROOT), name="assets")
 
 
 @app.get("/aicc-frontend-demo.html")
